@@ -254,11 +254,11 @@ export default function SurveyPage() {
                                   <p className="font-medium text-gray-700">
                                     {questionIndex + 1}-{subIndex + 1}. {sub.text}
                                   </p>
-                                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                                  <div className="flex flex-wrap sm:grid sm:grid-cols-6 gap-2">
                                     {[1, 2, 3, 4, 5].map((value) => (
                                       <label
                                         key={value}
-                                        className={`flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${selectedValue === value ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
+                                        className={`flex-1 sm:flex-none min-w-[56px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${selectedValue === value ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
                                       >
                                         <input
                                           type="radio"
@@ -273,7 +273,7 @@ export default function SurveyPage() {
                                     ))}
                                     {question.includeNoneOption && (
                                       <label
-                                        className={`flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${selectedValue === null ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
+                                        className={`flex-1 sm:flex-none min-w-[72px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${selectedValue === null ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
                                       >
                                         <input
                                           type="radio"
@@ -283,7 +283,7 @@ export default function SurveyPage() {
                                           onChange={() => handleScaleAnswer(question.id, null, sub.id)}
                                           className="sr-only"
                                         />
-                                        <span className="text-sm font-medium">해당없음</span>
+                                        <span className="text-sm font-medium whitespace-nowrap">해당없음</span>
                                       </label>
                                     )}
                                   </div>
@@ -292,14 +292,14 @@ export default function SurveyPage() {
                             })
                           ) : (
                             <div className="space-y-2">
-                              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                              <div className="flex flex-wrap sm:grid sm:grid-cols-6 gap-2">
                                 {[1, 2, 3, 4, 5].map((value) => {
                                   const key = makeKey(question.id)
                                   const selectedValue = answers[key]
                                   return (
                                     <label
                                       key={value}
-                                      className={`flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${selectedValue === value ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
+                                      className={`flex-1 sm:flex-none min-w-[56px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${selectedValue === value ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
                                     >
                                       <input
                                         type="radio"
@@ -315,7 +315,7 @@ export default function SurveyPage() {
                                 })}
                                 {question.includeNoneOption && (
                                   <label
-                                    className={`flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${answers[makeKey(question.id)] === null ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
+                                    className={`flex-1 sm:flex-none min-w-[72px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${answers[makeKey(question.id)] === null ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
                                   >
                                     <input
                                       type="radio"
@@ -325,7 +325,7 @@ export default function SurveyPage() {
                                       onChange={() => handleScaleAnswer(question.id, null)}
                                       className="sr-only"
                                     />
-                                    <span className="text-sm font-medium">해당없음</span>
+                                    <span className="text-sm font-medium whitespace-nowrap">해당없음</span>
                                   </label>
                                 )}
                               </div>

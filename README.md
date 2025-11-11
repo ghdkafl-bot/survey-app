@@ -14,8 +14,7 @@
 - **Next.js 14** (App Router)
 - **TypeScript**
 - **Tailwind CSS**
-- **xlsx** (Excel 파일 생성)
-- **로컬 메모리 DB** (Supabase 연동 준비 완료)
+- **Supabase** (PostgreSQL + Authentication)
 
 ## 설치 및 실행
 
@@ -31,7 +30,16 @@ npm install
 npm run dev
 ```
 
-브라우저에서 [http://localhost:3000](http://localhost:3000)을 열어 확인하세요.
+### 3. 환경 변수 설정
+
+프로젝트 루트에 `.env.local` 파일을 생성하고 Supabase 프로젝트 정보를 입력하세요.
+
+```
+NEXT_PUBLIC_SUPABASE_URL=YOUR_SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
+```
+
+> `service_role` 키는 서버 전용이므로 GitHub이나 프론트엔드 코드에 노출되지 않도록 주의하세요.
 
 ## 사용 방법
 
@@ -55,19 +63,71 @@ npm run dev
 1. 관리자 페이지에서 원하는 설문의 "Excel 다운로드" 버튼 클릭
 2. Excel 파일이 자동으로 다운로드됩니다
 
-## Supabase 연동 준비
+## Supabase 설정 가이드
 
-현재는 로컬 메모리 기반 데이터베이스를 사용하고 있습니다. Supabase로 전환하려면:
+1. [supabase.com](https://supabase.com)에서 새 프로젝트를 만들고 **Project Settings → API**에서 `Project URL`, `anon public key`, `service_role key`를 확인합니다.
+2. Supabase Table editor 또는 SQL 에디터에서 아래 테이블을 생성하세요. (모든 FK는 `ON DELETE CASCADE` 설정 권장)
 
-1. `lib/db.ts` 파일을 Supabase 클라이언트로 교체
-2. 환경 변수 설정 (`.env.local`)
-3. Supabase 테이블 생성 (surveys, questions, responses)
+```sql
+create table surveys (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  description text,
+  background_color text,
+  closing_message jsonb,
+  created_at timestamptz not null default now()
+);
+
+create table question_groups (
+  id uuid primary key default gen_random_uuid(),
+  survey_id uuid references surveys(id) on delete cascade,
+  title text not null,
+  "order" integer default 0
+);
+
+create table questions (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid references question_groups(id) on delete cascade,
+  text text not null,
+  "order" integer default 0,
+  type text not null,
+  include_none_option boolean
+);
+
+create table sub_questions (
+  id uuid primary key default gen_random_uuid(),
+  question_id uuid references questions(id) on delete cascade,
+  text text not null,
+  "order" integer default 0
+);
+
+create table responses (
+  id uuid primary key default gen_random_uuid(),
+  survey_id uuid references surveys(id) on delete cascade,
+  patient_name text,
+  patient_type text,
+  submitted_at timestamptz not null default now()
+);
+
+create table answers (
+  id uuid primary key default gen_random_uuid(),
+  response_id uuid references responses(id) on delete cascade,
+  question_id uuid references questions(id) on delete cascade,
+  sub_question_id uuid references sub_questions(id),
+  value integer,
+  text_value text
+);
+```
+
+3. 필요하다면 Row Level Security(RLS)를 비활성화하거나 정책을 추가합니다. (기본 상태는 비활성화)
+4. `.env.local`에 위에서 확인한 URL과 서비스 키를 입력합니다.
+5. `npm run dev`로 동작을 확인하고, 설문/응답이 Supabase 테이블에 저장되는지 검증하세요.
 
 ## Vercel 배포
 
 1. GitHub에 프로젝트 푸시
 2. Vercel에 프로젝트 연결
-3. 환경 변수 설정 (Supabase 연동 시)
+3. Vercel **Environment Variables**에 `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`를 추가
 4. 배포 완료
 
 ## 프로젝트 구조
@@ -81,7 +141,8 @@ survey-app/
 │   ├── api/            # API 라우트
 │   └── page.tsx        # 홈페이지
 ├── lib/
-│   └── db.ts           # 데이터베이스 로직
+│   ├── db.ts           # Supabase 기반 데이터베이스 로직
+│   └── supabaseClient.ts
 └── package.json
 ```
 

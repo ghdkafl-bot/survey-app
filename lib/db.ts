@@ -1,8 +1,4 @@
-// 로컬 데이터베이스 (나중에 Supabase로 교체 가능)
-// 메모리 기반 저장소로 구현
-
-import { promises as fs } from 'fs'
-import path from 'path'
+import { supabase } from './supabaseClient'
 
 export type QuestionType = 'scale' | 'text'
 
@@ -26,9 +22,9 @@ export interface ClosingMessage {
 export interface QuestionGroup {
   id: string
   surveyId: string
-  title: string // 섹션 제목
+  title: string
   order: number
-  questions: Question[] // 1~5개
+  questions: Question[]
 }
 
 export interface Question {
@@ -67,10 +63,6 @@ export interface Answer {
   textValue?: string | null
 }
 
-const DATA_DIR = path.join(process.cwd(), 'data')
-const SURVEYS_FILE = path.join(DATA_DIR, 'surveys.json')
-const RESPONSES_FILE = path.join(DATA_DIR, 'responses.json')
-
 const DEFAULT_CLOSING_MESSAGE: ClosingMessage = {
   text: '설문에 응해주셔서 감사합니다. 귀하의 의견으로 더욱 발전하는 "의료법인 구암의료재단 포항시티병원"이 되겠습니다.',
   color: '#1f2937',
@@ -83,47 +75,6 @@ const DEFAULT_CLOSING_MESSAGE: ClosingMessage = {
 
 const DEPRECATED_GROUP_IDS = ['__free_opinion_group']
 const DEPRECATED_QUESTION_IDS = ['__free_opinion_praise', '__free_opinion_improve']
-
-async function ensureDataFiles() {
-  try {
-    await fs.mkdir(DATA_DIR, { recursive: true })
-    try {
-      await fs.access(SURVEYS_FILE)
-    } catch {
-      await fs.writeFile(SURVEYS_FILE, JSON.stringify([], null, 2), 'utf-8')
-    }
-    try {
-      await fs.access(RESPONSES_FILE)
-    } catch {
-      await fs.writeFile(RESPONSES_FILE, JSON.stringify([], null, 2), 'utf-8')
-    }
-  } catch (error) {
-    console.error('Failed to initialize data files:', error)
-  }
-}
-
-const normalizeQuestion = (question: any, groupId: string, fallbackIdPrefix: string, index: number): Question => {
-  const questionId = question?.id || `${fallbackIdPrefix}-q-${index}`
-  const type: QuestionType = question?.type === 'text' ? 'text' : 'scale'
-  const rawSubQuestions = Array.isArray(question?.subQuestions) ? question.subQuestions : []
-  const subQuestions: SubQuestion[] = rawSubQuestions
-    .slice(0, 5)
-    .map((sub: any, subIdx: number) => ({
-      id: sub?.id || `${questionId}-sub-${subIdx}`,
-      questionId,
-      text: typeof sub?.text === 'string' ? sub.text : '',
-      order: typeof sub?.order === 'number' ? sub.order : subIdx,
-    }))
-  return {
-    id: questionId,
-    groupId,
-    text: typeof question?.text === 'string' ? question.text : '',
-    order: typeof question?.order === 'number' ? question.order : index,
-    type,
-    subQuestions,
-    includeNoneOption: type === 'scale' ? Boolean(question?.includeNoneOption) : undefined,
-  }
-}
 
 const normalizeClosingMessage = (closingMessage: any): ClosingMessage => ({
   ...DEFAULT_CLOSING_MESSAGE,
@@ -144,232 +95,293 @@ const normalizeClosingMessage = (closingMessage: any): ClosingMessage => ({
     : {}),
 })
 
-const normalizeSurvey = (survey: any): Survey => {
-  const surveyId = survey?.id || Date.now().toString()
-  const rawGroups = Array.isArray(survey?.questionGroups) ? survey.questionGroups : []
-  const questionGroups: QuestionGroup[] = rawGroups
+const mapSurveyRecord = (record: any): Survey => {
+  if (!record) throw new Error('Invalid survey record')
+
+  const questionGroups: QuestionGroup[] = (record.question_groups ?? [])
     .filter((group: any) => !DEPRECATED_GROUP_IDS.includes(group?.id))
-    .map((group: any, groupIdx: number) => {
-      const groupId = group?.id || `${surveyId}-group-${groupIdx}`
-      const rawQuestions = Array.isArray(group?.questions) ? group.questions : []
+    .sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0))
+    .map((group: any) => {
+      const questions: Question[] = (group.questions ?? [])
+        .filter((question: any) => !DEPRECATED_QUESTION_IDS.includes(question?.id))
+        .sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0))
+        .map((question: any) => ({
+          id: question.id,
+          groupId: group.id,
+          text: question.text,
+          order: question.order ?? 0,
+          type: question.type === 'text' ? 'text' : 'scale',
+          includeNoneOption: question.type === 'scale' ? Boolean(question.include_none_option) : undefined,
+          subQuestions: (question.sub_questions ?? [])
+            .sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0))
+            .map((sub: any) => ({
+              id: sub.id,
+              questionId: question.id,
+              text: sub.text,
+              order: sub.order ?? 0,
+            })),
+        }))
+
       return {
-        id: groupId,
-        surveyId,
-        title: typeof group?.title === 'string' ? group.title : '',
-        order: typeof group?.order === 'number' ? group.order : groupIdx,
-        questions: rawQuestions
-          .filter((q: any) => !DEPRECATED_QUESTION_IDS.includes(q?.id))
-          .map((q: any, qIdx: number) => normalizeQuestion(q, groupId, surveyId, qIdx)),
+        id: group.id,
+        surveyId: record.id,
+        title: group.title,
+        order: group.order ?? 0,
+        questions,
       }
     })
+
   return {
-    id: surveyId,
-    title: typeof survey?.title === 'string' ? survey.title : '',
-    description: typeof survey?.description === 'string' ? survey.description : undefined,
-    createdAt: typeof survey?.createdAt === 'string' ? survey.createdAt : new Date().toISOString(),
-    backgroundColor: typeof survey?.backgroundColor === 'string' ? survey.backgroundColor : undefined,
+    id: record.id,
+    title: record.title,
+    description: record.description ?? undefined,
+    createdAt: record.created_at ?? new Date().toISOString(),
+    backgroundColor: record.background_color ?? undefined,
     questionGroups,
-    closingMessage: normalizeClosingMessage(survey?.closingMessage),
+    closingMessage: normalizeClosingMessage(record.closing_message),
   }
 }
 
-const normalizeAnswer = (answer: any): Answer => ({
-  questionId: answer?.questionId,
-  subQuestionId: answer?.subQuestionId,
-  value: typeof answer?.value === 'number' ? answer.value : null,
-  textValue: typeof answer?.textValue === 'string' ? answer.textValue : undefined,
+const mapResponseRecord = (record: any): Response => ({
+  id: record.id,
+  surveyId: record.survey_id,
+  patientName: record.patient_name ?? undefined,
+  patientType: record.patient_type ?? undefined,
+  submittedAt: record.submitted_at ?? new Date().toISOString(),
+  answers: (record.answers ?? []).map((answer: any) => ({
+    questionId: answer.question_id,
+    subQuestionId: answer.sub_question_id ?? undefined,
+    value: typeof answer.value === 'number' ? answer.value : answer.value === null ? null : undefined,
+    textValue: typeof answer.text_value === 'string' ? answer.text_value : undefined,
+  })),
 })
 
-async function loadSurveys(): Promise<Survey[]> {
-  try {
-    await ensureDataFiles()
-    const data = await fs.readFile(SURVEYS_FILE, 'utf-8')
-    const parsed = JSON.parse(data)
-    return Array.isArray(parsed) ? parsed.map(normalizeSurvey) : []
-  } catch (error) {
-    console.error('Failed to load surveys:', error)
-    return []
-  }
-}
+async function insertQuestionStructure(
+  surveyId: string,
+  questionGroups: QuestionGroup[]
+) {
+  for (const [groupIdx, group] of questionGroups.entries()) {
+    const { data: insertedGroup, error: groupError } = await supabase
+      .from('question_groups')
+      .insert({
+        survey_id: surveyId,
+        title: group.title,
+        order: group.order ?? groupIdx,
+      })
+      .select()
+      .single()
 
-async function loadResponses(): Promise<Response[]> {
-  try {
-    await ensureDataFiles()
-    const data = await fs.readFile(RESPONSES_FILE, 'utf-8')
-    const parsed = JSON.parse(data)
-    if (!Array.isArray(parsed)) return []
-    return parsed.map((response: any) => ({
-      id: response?.id || Date.now().toString(),
-      surveyId: response?.surveyId,
-      submittedAt: response?.submittedAt || new Date().toISOString(),
-      patientName: response?.patientName,
-      patientType: response?.patientType,
-      answers: Array.isArray(response?.answers)
-        ? response.answers.map(normalizeAnswer)
-        : [],
-    }))
-  } catch (error) {
-    console.error('Failed to load responses:', error)
-    return []
-  }
-}
+    if (groupError) throw groupError
 
-async function saveSurveys(surveys: Survey[]) {
-  try {
-    await ensureDataFiles()
-    await fs.writeFile(SURVEYS_FILE, JSON.stringify(surveys, null, 2), 'utf-8')
-  } catch (error) {
-    console.error('Failed to save surveys:', error)
-    throw error
-  }
-}
+    const questions = group.questions ?? []
 
-async function saveResponses(responses: Response[]) {
-  try {
-    await ensureDataFiles()
-    await fs.writeFile(RESPONSES_FILE, JSON.stringify(responses, null, 2), 'utf-8')
-  } catch (error) {
-    console.error('Failed to save responses:', error)
-    throw error
-  }
-}
+    for (const [questionIdx, question] of questions.entries()) {
+      const { data: insertedQuestion, error: questionError } = await supabase
+        .from('questions')
+        .insert({
+          group_id: insertedGroup.id,
+          text: question.text,
+          order: question.order ?? questionIdx,
+          type: question.type,
+          include_none_option: question.type === 'scale' ? Boolean(question.includeNoneOption) : null,
+        })
+        .select()
+        .single()
 
-const isWithinRange = (dateString: string, from?: string, to?: string) => {
-  const date = new Date(dateString).getTime()
-  if (Number.isNaN(date)) return false
-  if (from) {
-    const fromTime = new Date(from).getTime()
-    if (!Number.isNaN(fromTime) && date < fromTime) return false
+      if (questionError) throw questionError
+
+      const subQuestions = question.subQuestions ?? []
+
+      if (subQuestions.length > 0) {
+        const { error: subError } = await supabase
+          .from('sub_questions')
+          .insert(
+            subQuestions.slice(0, 5).map((sub, subIdx) => ({
+              question_id: insertedQuestion.id,
+              text: sub.text,
+              order: sub.order ?? subIdx,
+            }))
+          )
+
+        if (subError) throw subError
+      }
+    }
   }
-  if (to) {
-    const toTime = new Date(to).getTime()
-    if (!Number.isNaN(toTime) && date > toTime) return false
-  }
-  return true
 }
 
 export const db = {
   createSurvey: async (survey: Omit<Survey, 'id' | 'createdAt'>): Promise<Survey> => {
-    const surveys = await loadSurveys()
-    const surveyId = Date.now().toString()
-    const questionGroups = survey.questionGroups.map((group, groupIdx) => {
-      const groupId = group.id || `${surveyId}-group-${groupIdx}`
-      return {
-        id: groupId,
-        surveyId,
-        title: group.title,
-        order: group.order ?? groupIdx,
-        questions: group.questions.map((question, qIdx) => {
-          const questionId = question.id || `${surveyId}-q-${groupIdx}-${qIdx}`
-          return {
-            id: questionId,
-            groupId,
-            text: question.text,
-            order: question.order ?? qIdx,
-            type: question.type,
-            subQuestions: question.subQuestions.slice(0, 5).map((sub, subIdx) => ({
-              id: sub.id || `${questionId}-sub-${subIdx}`,
-              questionId,
-              text: sub.text,
-              order: sub.order ?? subIdx,
-            })),
-            includeNoneOption: question.type === 'scale' ? Boolean(question.includeNoneOption) : undefined,
-          }
-        }),
-      }
-    })
-    const newSurvey: Survey = {
-      ...survey,
-      id: surveyId,
-      createdAt: new Date().toISOString(),
-      questionGroups,
-      closingMessage: normalizeClosingMessage(survey.closingMessage),
-    }
-    surveys.push(newSurvey)
-    await saveSurveys(surveys)
-    return newSurvey
+    const questionGroups = survey.questionGroups ?? []
+    const closingMessage = normalizeClosingMessage(survey.closingMessage)
+
+    const { data: insertedSurvey, error } = await supabase
+      .from('surveys')
+      .insert({
+        title: survey.title,
+        description: survey.description ?? null,
+        background_color: survey.backgroundColor ?? null,
+        closing_message: closingMessage,
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+
+    await insertQuestionStructure(insertedSurvey.id, questionGroups)
+
+    const created = await db.getSurvey(insertedSurvey.id)
+    if (!created) throw new Error('생성된 설문을 불러오지 못했습니다.')
+    return created
   },
 
   getSurvey: async (id: string): Promise<Survey | undefined> => {
-    const surveys = await loadSurveys()
-    return surveys.find((s) => s.id === id)
+    const { data, error } = await supabase
+      .from('surveys')
+      .select(`
+        *,
+        question_groups (
+          id,
+          title,
+          order,
+          questions (
+            id,
+            text,
+            order,
+            type,
+            include_none_option,
+            sub_questions ( id, text, order )
+          )
+        )
+      `)
+      .eq('id', id)
+      .single()
+
+    if (error) return undefined
+    return mapSurveyRecord(data)
   },
 
   getAllSurveys: async (): Promise<Survey[]> => {
-    return await loadSurveys()
+    const { data, error } = await supabase
+      .from('surveys')
+      .select(`
+        id,
+        title,
+        description,
+        background_color,
+        closing_message,
+        created_at,
+        question_groups (
+          id,
+          title,
+          order,
+          questions (
+            id,
+            order
+          )
+        )
+      `)
+      .order('created_at', { ascending: false })
+
+    if (error || !data) return []
+    return data.map(mapSurveyRecord)
   },
 
-  updateSurvey: async (id: string, survey: Partial<Omit<Survey, 'id' | 'createdAt'>>): Promise<Survey | undefined> => {
-    const surveys = await loadSurveys()
-    const index = surveys.findIndex((s) => s.id === id)
-    if (index === -1) return undefined
+  updateSurvey: async (
+    id: string,
+    survey: Partial<Omit<Survey, 'id' | 'createdAt'>>
+  ): Promise<Survey | undefined> => {
+    const payload: Record<string, any> = {}
 
-    const existingSurvey = surveys[index]
-    const questionGroups = survey.questionGroups
-      ? survey.questionGroups.map((group, groupIdx) => {
-          const groupId = group.id || `${id}-group-${groupIdx}`
-          return {
-            id: groupId,
-            surveyId: id,
-            title: group.title,
-            order: group.order ?? groupIdx,
-            questions: group.questions.map((question, qIdx) => {
-              const questionId = question.id || `${id}-q-${groupIdx}-${qIdx}`
-              return {
-                id: questionId,
-                groupId,
-                text: question.text,
-                order: question.order ?? qIdx,
-                type: question.type,
-                subQuestions: question.subQuestions.slice(0, 5).map((sub, subIdx) => ({
-                  id: sub.id || `${questionId}-sub-${subIdx}`,
-                  questionId,
-                  text: sub.text,
-                  order: sub.order ?? subIdx,
-                })),
-                includeNoneOption: question.type === 'scale' ? Boolean(question.includeNoneOption) : undefined,
-              }
-            }),
-          }
-        })
-      : existingSurvey.questionGroups
+    if (survey.title !== undefined) payload.title = survey.title
+    if (survey.description !== undefined) payload.description = survey.description ?? null
+    if (survey.backgroundColor !== undefined) payload.background_color = survey.backgroundColor ?? null
 
-    const updatedSurvey: Survey = {
-      ...existingSurvey,
-      ...survey,
-      id: existingSurvey.id,
-      createdAt: existingSurvey.createdAt,
-      questionGroups,
-      closingMessage: survey.closingMessage
-        ? normalizeClosingMessage(survey.closingMessage)
-        : existingSurvey.closingMessage,
+    if (survey.closingMessage !== undefined) {
+      payload.closing_message = normalizeClosingMessage(survey.closingMessage)
     }
 
-    surveys[index] = updatedSurvey
-    await saveSurveys(surveys)
-    return updatedSurvey
+    if (Object.keys(payload).length > 0) {
+      const { error: updateError } = await supabase
+        .from('surveys')
+        .update(payload)
+        .eq('id', id)
+
+      if (updateError) throw updateError
+    }
+
+    if (survey.questionGroups) {
+      const { error: deleteGroupsError } = await supabase
+        .from('question_groups')
+        .delete()
+        .eq('survey_id', id)
+
+      if (deleteGroupsError) throw deleteGroupsError
+
+      await insertQuestionStructure(id, survey.questionGroups)
+    }
+
+    return await db.getSurvey(id)
   },
 
   createResponse: async (response: Omit<Response, 'id' | 'submittedAt'>): Promise<Response> => {
-    const responses = await loadResponses()
-    const newResponse: Response = {
-      ...response,
-      id: Date.now().toString(),
-      submittedAt: new Date().toISOString(),
-      answers: response.answers.map(normalizeAnswer),
+    const { data: insertedResponse, error } = await supabase
+      .from('responses')
+      .insert({
+        survey_id: response.surveyId,
+        patient_name: response.patientName ?? null,
+        patient_type: response.patientType ?? null,
+      })
+      .select('id, survey_id, patient_name, patient_type, submitted_at')
+      .single()
+
+    if (error) throw error
+
+    if (response.answers.length > 0) {
+      const answerPayload = response.answers.map((answer) => ({
+        response_id: insertedResponse.id,
+        question_id: answer.questionId,
+        sub_question_id: answer.subQuestionId ?? null,
+        value: typeof answer.value === 'number' ? answer.value : null,
+        text_value: typeof answer.textValue === 'string' ? answer.textValue : null,
+      }))
+
+      const { error: answerError } = await supabase
+        .from('answers')
+        .insert(answerPayload)
+
+      if (answerError) throw answerError
     }
-    responses.push(newResponse)
-    await saveResponses(responses)
-    return newResponse
+
+    return mapResponseRecord({
+      ...insertedResponse,
+      answers: (response.answers ?? []).map((answer) => ({
+        question_id: answer.questionId,
+        sub_question_id: answer.subQuestionId ?? null,
+        value: typeof answer.value === 'number' ? answer.value : null,
+        text_value: typeof answer.textValue === 'string' ? answer.textValue : null,
+      })),
+    })
   },
 
   getResponsesBySurvey: async (surveyId: string): Promise<Response[]> => {
-    const responses = await loadResponses()
-    return responses.filter((r) => r.surveyId === surveyId)
+    const { data, error } = await supabase
+      .from('responses')
+      .select('id, survey_id, patient_name, patient_type, submitted_at, answers (id, question_id, sub_question_id, value, text_value)')
+      .eq('survey_id', surveyId)
+      .order('submitted_at', { ascending: true })
+
+    if (error || !data) return []
+    return data.map(mapResponseRecord)
   },
 
   getAllResponses: async (): Promise<Response[]> => {
-    return await loadResponses()
+    const { data, error } = await supabase
+      .from('responses')
+      .select('id, survey_id, patient_name, patient_type, submitted_at, answers (id, question_id, sub_question_id, value, text_value)')
+      .order('submitted_at', { ascending: true })
+
+    if (error || !data) return []
+    return data.map(mapResponseRecord)
   },
 
   deleteResponsesBySurveyAndDateRange: async (
@@ -377,23 +389,35 @@ export const db = {
     from?: string,
     to?: string
   ): Promise<number> => {
-    const responses = await loadResponses()
-    const remaining: Response[] = []
-    let deletedCount = 0
-    responses.forEach((response) => {
-      if (
-        response.surveyId === surveyId &&
-        (!from && !to ? true : isWithinRange(response.submittedAt, from, to))
-      ) {
-        deletedCount += 1
-      } else {
-        remaining.push(response)
-      }
-    })
-    if (deletedCount > 0) {
-      await saveResponses(remaining)
+    let query = supabase
+      .from('responses')
+      .select('id')
+      .eq('survey_id', surveyId)
+
+    if (from) {
+      query = query.gte('submitted_at', from)
     }
-    return deletedCount
+
+    if (to) {
+      query = query.lte('submitted_at', to)
+    }
+
+    const { data: targets, error } = await query
+
+    if (error || !targets || targets.length === 0) {
+      return 0
+    }
+
+    const targetIds = targets.map((row: any) => row.id)
+
+    const { error: deleteError } = await supabase
+      .from('responses')
+      .delete()
+      .in('id', targetIds)
+
+    if (deleteError) throw deleteError
+
+    return targetIds.length
   },
 }
 
