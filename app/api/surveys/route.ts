@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       title,
       description,
       backgroundColor,
-      questionGroups: questionGroups.map((group: { title: string; order?: number; questions: any[] }, groupIdx: number) => ({
+      questionGroups: questionGroups.map((group: { id?: string; title: string; order?: number; questions: any[] }, groupIdx: number) => ({
         id: group.id,
         surveyId: '',
         title: group.title,
@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
           text: q.text,
           order: q.order ?? qIdx,
           type: q.type === 'text' ? 'text' : 'scale',
+          includeNoneOption: q.type === 'scale' ? Boolean(q.includeNoneOption) : undefined,
           subQuestions: Array.isArray(q.subQuestions)
             ? q.subQuestions.slice(0, 5).map((sub: any, subIdx: number) => ({
                 id: sub.id,
