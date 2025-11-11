@@ -41,23 +41,30 @@ export default function SurveysPage() {
             </p>
           ) : (
             <div className="space-y-4">
-              {surveys.map((survey) => (
-                <Link
-                  key={survey.id}
-                  href={`/survey/${survey.id}`}
-                  className="block p-6 border border-gray-200 rounded-lg hover:shadow-md transition-shadow"
-                >
-                  <h3 className="text-xl font-semibold text-gray-800 mb-2">
-                    {survey.title}
-                  </h3>
-                  {survey.description && (
-                    <p className="text-gray-600 mb-2">{survey.description}</p>
-                  )}
-                  <p className="text-sm text-gray-500">
-                    문항 수: {survey.questions.length}개
-                  </p>
-                </Link>
-              ))}
+              {surveys.map((survey) => {
+                const groupCount = survey.questionGroups?.length || 0
+                const questionCount = survey.questionGroups?.reduce(
+                  (sum, group) => sum + (group.questions?.length || 0),
+                  0
+                ) || 0
+                return (
+                  <Link
+                    key={survey.id}
+                    href={`/survey/${survey.id}`}
+                    className="block p-6 border border-gray-200 rounded-lg hover:shadow-md transition-shadow"
+                  >
+                    <h3 className="text-xl font-semibold text-gray-800 mb-2">
+                      {survey.title}
+                    </h3>
+                    {survey.description && (
+                      <p className="text-gray-600 mb-2">{survey.description}</p>
+                    )}
+                    <p className="text-sm text-gray-500">
+                      그룹 수: {groupCount}개 · 총 문항 수: {questionCount}개
+                    </p>
+                  </Link>
+                )
+              })}
             </div>
           )}
         </div>
