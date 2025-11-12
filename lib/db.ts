@@ -19,6 +19,13 @@ export interface ClosingMessage {
   fontFamily?: string
 }
 
+export interface PatientInfoQuestion {
+  id: string
+  text: string
+  options: string[]
+  required?: boolean
+}
+
 export interface PatientInfoConfig {
   patientTypeLabel: string
   patientTypePlaceholder: string
@@ -28,6 +35,7 @@ export interface PatientInfoConfig {
   patientNameLabel: string
   patientNamePlaceholder: string
   patientNameRequired: boolean
+  additionalQuestions?: PatientInfoQuestion[]
 }
 
 export interface QuestionGroup {
@@ -66,6 +74,7 @@ export interface Response {
   submittedAt: string
   patientName?: string
   patientType?: string
+  patientInfoAnswers?: Record<string, string[]>
 }
 
 export interface Answer {
@@ -84,6 +93,7 @@ export const DEFAULT_PATIENT_INFO_CONFIG: PatientInfoConfig = {
   patientNameLabel: '환자 성함',
   patientNamePlaceholder: '환자성함을 입력하세요 (선택사항)',
   patientNameRequired: false,
+  additionalQuestions: [],
 }
 
 const DEFAULT_CLOSING_MESSAGE: ClosingMessage = {
@@ -149,6 +159,26 @@ const normalizePatientInfoConfig = (config: any): PatientInfoConfig => {
         .filter((value: string) => value.length > 0)
     : []
 
+  const additionalQuestions: PatientInfoQuestion[] = Array.isArray(config?.additionalQuestions)
+    ? config.additionalQuestions
+        .map((q: any, idx: number) => {
+          if (!q || typeof q.text !== 'string' || !q.text.trim()) return null
+          const questionOptions = Array.isArray(q.options)
+            ? q.options
+                .map((opt: unknown) => (typeof opt === 'string' ? opt : '')?.trim())
+                .filter((opt: string) => opt.length > 0)
+            : []
+          if (questionOptions.length === 0) return null
+          return {
+            id: typeof q.id === 'string' && q.id.trim() ? q.id : `patient-info-q-${idx}-${Date.now()}`,
+            text: q.text.trim(),
+            options: questionOptions,
+            required: typeof q.required === 'boolean' ? q.required : false,
+          }
+        })
+        .filter((q: PatientInfoQuestion | null): q is PatientInfoQuestion => q !== null)
+    : []
+
   return {
     patientTypeLabel:
       typeof config?.patientTypeLabel === 'string' && config.patientTypeLabel.trim().length > 0
@@ -179,6 +209,7 @@ const normalizePatientInfoConfig = (config: any): PatientInfoConfig => {
       typeof config?.patientNameRequired === 'boolean'
         ? config.patientNameRequired
         : DEFAULT_PATIENT_INFO_CONFIG.patientNameRequired,
+    additionalQuestions: additionalQuestions.length > 0 ? additionalQuestions : [],
   }
 }
 
@@ -266,6 +297,10 @@ const mapResponseRecord = (record: any): Response => ({
   patientName: record.patient_name ?? undefined,
   patientType: record.patient_type ?? undefined,
   submittedAt: record.submitted_at ?? new Date().toISOString(),
+  patientInfoAnswers:
+    typeof record.patient_info_answers === 'object' && record.patient_info_answers !== null
+      ? record.patient_info_answers
+      : undefined,
   answers: (record.answers ?? []).map((answer: any) => ({
     questionId: answer.question_id,
     subQuestionId: answer.sub_question_id ?? undefined,
@@ -465,8 +500,11 @@ export const db = {
         survey_id: response.surveyId,
         patient_name: response.patientName ?? null,
         patient_type: response.patientType ?? null,
+        patient_info_answers: response.patientInfoAnswers
+          ? JSON.stringify(response.patientInfoAnswers)
+          : null,
       })
-      .select('id, survey_id, patient_name, patient_type, submitted_at')
+      .select('id, survey_id, patient_name, patient_type, patient_info_answers, submitted_at')
       .single()
 
     if (error) throw error
@@ -489,6 +527,10 @@ export const db = {
 
     return mapResponseRecord({
       ...insertedResponse,
+      patient_info_answers:
+        typeof insertedResponse.patient_info_answers === 'string'
+          ? JSON.parse(insertedResponse.patient_info_answers)
+          : insertedResponse.patient_info_answers,
       answers: (response.answers ?? []).map((answer) => ({
         question_id: answer.questionId,
         sub_question_id: answer.subQuestionId ?? null,
@@ -502,23 +544,43 @@ export const db = {
     const supabase = getSupabaseServiceClient()
     const { data, error } = await supabase
       .from('responses')
-      .select('id, survey_id, patient_name, patient_type, submitted_at, answers (id, question_id, sub_question_id, value, text_value)')
+      .select(
+        'id, survey_id, patient_name, patient_type, patient_info_answers, submitted_at, answers (id, question_id, sub_question_id, value, text_value)'
+      )
       .eq('survey_id', surveyId)
       .order('submitted_at', { ascending: true })
 
     if (error || !data) return []
-    return data.map(mapResponseRecord)
+    return data.map((record: any) =>
+      mapResponseRecord({
+        ...record,
+        patient_info_answers:
+          typeof record.patient_info_answers === 'string'
+            ? JSON.parse(record.patient_info_answers)
+            : record.patient_info_answers,
+      })
+    )
   },
 
   getAllResponses: async (): Promise<Response[]> => {
     const supabase = getSupabaseServiceClient()
     const { data, error } = await supabase
       .from('responses')
-      .select('id, survey_id, patient_name, patient_type, submitted_at, answers (id, question_id, sub_question_id, value, text_value)')
+      .select(
+        'id, survey_id, patient_name, patient_type, patient_info_answers, submitted_at, answers (id, question_id, sub_question_id, value, text_value)'
+      )
       .order('submitted_at', { ascending: true })
 
     if (error || !data) return []
-    return data.map(mapResponseRecord)
+    return data.map((record: any) =>
+      mapResponseRecord({
+        ...record,
+        patient_info_answers:
+          typeof record.patient_info_answers === 'string'
+            ? JSON.parse(record.patient_info_answers)
+            : record.patient_info_answers,
+      })
+    )
   },
 
   deleteResponsesBySurveyAndDateRange: async (

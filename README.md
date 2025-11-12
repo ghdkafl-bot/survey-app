@@ -108,6 +108,7 @@ create table responses (
   survey_id uuid references surveys(id) on delete cascade,
   patient_name text,
   patient_type text,
+  patient_info_answers jsonb,
   submitted_at timestamptz not null default now()
 );
 
@@ -121,10 +122,11 @@ create table answers (
 );
 ```
 
-이미 테이블을 만든 상태라면 다음 명령으로 `patient_info_config` 컬럼을 추가하세요.
+이미 테이블을 만든 상태라면 다음 명령으로 필요한 컬럼을 추가하세요.
 
 ```sql
 alter table surveys add column if not exists patient_info_config jsonb;
+alter table responses add column if not exists patient_info_answers jsonb;
 ```
 
 3. 필요하다면 Row Level Security(RLS)를 비활성화하거나 정책을 추가합니다. (기본 상태는 비활성화)

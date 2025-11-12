@@ -8,6 +8,7 @@ import {
   QuestionType,
   ClosingMessage,
   PatientInfoConfig,
+  PatientInfoQuestion,
   DEFAULT_PATIENT_INFO_CONFIG,
 } from '@/lib/db'
 
@@ -317,6 +318,31 @@ export default function AdminPage() {
       return
     }
 
+    const sanitizedAdditionalQuestions: PatientInfoQuestion[] = (
+      patientInfoConfig.additionalQuestions || []
+    )
+      .map((q) => {
+        const sanitizedOptions = q.options
+          .map((opt) => opt.trim())
+          .filter((opt) => opt.length > 0)
+        if (!q.text.trim() || sanitizedOptions.length === 0) {
+          return null
+        }
+        return {
+          id: q.id || `patient-info-q-${Date.now()}-${Math.random()}`,
+          text: q.text.trim(),
+          options: sanitizedOptions,
+          required: q.required !== undefined ? Boolean(q.required) : false,
+        }
+      })
+      .filter((q): q is NonNullable<typeof q> => q !== null)
+      .map((q) => ({
+        id: q.id,
+        text: q.text,
+        options: q.options,
+        required: q.required,
+      }))
+
     const sanitizedPatientInfoConfig: PatientInfoConfig = {
       ...patientInfoConfig,
       patientTypeLabel: typeLabel,
@@ -325,6 +351,7 @@ export default function AdminPage() {
       patientTypeTextColor: (patientInfoConfig.patientTypeTextColor?.trim() || DEFAULT_PATIENT_INFO_CONFIG.patientTypeTextColor) ?? '#111827',
       patientNameLabel: nameLabel,
       patientNamePlaceholder: namePlaceholder,
+      additionalQuestions: sanitizedAdditionalQuestions,
     }
 
     setLoading(true)
@@ -535,6 +562,15 @@ export default function AdminPage() {
         survey.patientInfoConfig?.patientTypeOptions?.length
           ? [...survey.patientInfoConfig.patientTypeOptions]
           : [...DEFAULT_PATIENT_INFO_CONFIG.patientTypeOptions],
+      additionalQuestions:
+        survey.patientInfoConfig?.additionalQuestions?.length
+          ? survey.patientInfoConfig.additionalQuestions.map((q) => ({
+              id: q.id,
+              text: q.text,
+              options: [...q.options],
+              required: q.required || false,
+            }))
+          : [],
     })
     setQuestionGroups(
       survey.questionGroups.map((group) => ({
@@ -831,6 +867,155 @@ export default function AdminPage() {
                     >
                       {patientInfoConfig.patientNameRequired ? '필수로 설정됨' : '선택 사항'}
                     </button>
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-200 pt-4 mt-4">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-md font-semibold text-gray-800">추가 질문 (토글 형식)</h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPatientInfoConfig((prev) => ({
+                          ...prev,
+                          additionalQuestions: [
+                            ...(prev.additionalQuestions || []),
+                            {
+                              id: `patient-info-q-${Date.now()}`,
+                              text: '',
+                              options: [''],
+                              required: false,
+                            },
+                          ],
+                        }))
+                      }}
+                      className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm"
+                    >
+                      + 질문 추가
+                    </button>
+                  </div>
+                  <div className="space-y-4">
+                    {patientInfoConfig.additionalQuestions?.map((question, qIdx) => (
+                      <div key={question.id} className="border border-gray-200 rounded-lg p-4 space-y-3">
+                        <div className="flex gap-2 items-start">
+                          <div className="flex-1 space-y-2">
+                            <input
+                              value={question.text}
+                              onChange={(e) => {
+                                setPatientInfoConfig((prev) => {
+                                  const next = { ...prev }
+                                  const questions = [...(next.additionalQuestions || [])]
+                                  questions[qIdx] = { ...questions[qIdx], text: e.target.value }
+                                  next.additionalQuestions = questions
+                                  return next
+                                })
+                              }}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                              placeholder="질문 내용을 입력하세요"
+                            />
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPatientInfoConfig((prev) => {
+                                    const next = { ...prev }
+                                    const questions = [...(next.additionalQuestions || [])]
+                                    questions[qIdx] = {
+                                      ...questions[qIdx],
+                                      required: !questions[qIdx].required,
+                                    }
+                                    next.additionalQuestions = questions
+                                    return next
+                                  })
+                                }}
+                                className={`px-3 py-1 rounded text-xs font-medium ${
+                                  question.required
+                                    ? 'bg-blue-500 text-white'
+                                    : 'bg-gray-200 text-gray-600'
+                                }`}
+                              >
+                                {question.required ? '필수' : '선택'}
+                              </button>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPatientInfoConfig((prev) => {
+                                const next = { ...prev }
+                                next.additionalQuestions = (next.additionalQuestions || []).filter(
+                                  (_, idx) => idx !== qIdx
+                                )
+                                return next
+                              })
+                            }}
+                            className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm"
+                          >
+                            삭제
+                          </button>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="block text-xs font-medium text-gray-600">답변 옵션</label>
+                          {question.options.map((option, optIdx) => (
+                            <div key={optIdx} className="flex gap-2">
+                              <input
+                                value={option}
+                                onChange={(e) => {
+                                  setPatientInfoConfig((prev) => {
+                                    const next = { ...prev }
+                                    const questions = [...(next.additionalQuestions || [])]
+                                    const options = [...questions[qIdx].options]
+                                    options[optIdx] = e.target.value
+                                    questions[qIdx] = { ...questions[qIdx], options }
+                                    next.additionalQuestions = questions
+                                    return next
+                                  })
+                                }}
+                                className="flex-1 px-3 py-1 border border-gray-300 rounded text-sm"
+                                placeholder={`옵션 ${optIdx + 1}`}
+                              />
+                              {question.options.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPatientInfoConfig((prev) => {
+                                      const next = { ...prev }
+                                      const questions = [...(next.additionalQuestions || [])]
+                                      const options = questions[qIdx].options.filter((_, idx) => idx !== optIdx)
+                                      questions[qIdx] = { ...questions[qIdx], options }
+                                      next.additionalQuestions = questions
+                                      return next
+                                    })
+                                  }}
+                                  className="px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-xs"
+                                >
+                                  삭제
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPatientInfoConfig((prev) => {
+                                const next = { ...prev }
+                                const questions = [...(next.additionalQuestions || [])]
+                                const options = [...questions[qIdx].options, '']
+                                questions[qIdx] = { ...questions[qIdx], options }
+                                next.additionalQuestions = questions
+                                return next
+                              })
+                            }}
+                            className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded text-xs"
+                          >
+                            + 옵션 추가
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {(!patientInfoConfig.additionalQuestions || patientInfoConfig.additionalQuestions.length === 0) && (
+                      <p className="text-sm text-gray-500 text-center py-4">추가 질문이 없습니다. 위의 "+ 질문 추가" 버튼을 클릭하여 추가하세요.</p>
+                    )}
                   </div>
                 </div>
               </section>

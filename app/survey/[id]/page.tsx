@@ -9,6 +9,7 @@ import {
   ClosingMessage,
   Question,
   PatientInfoConfig,
+  PatientInfoQuestion,
   DEFAULT_PATIENT_INFO_CONFIG,
 } from '@/lib/db'
 
@@ -30,6 +31,7 @@ export default function SurveyPage() {
   const [answers, setAnswers] = useState<Record<string, number | string | null | undefined>>({})
   const [patientName, setPatientName] = useState('')
   const [patientType, setPatientType] = useState('')
+  const [patientInfoAnswers, setPatientInfoAnswers] = useState<Record<string, string[]>>({})
   const [submitting, setSubmitting] = useState(false)
   const patientInfoSectionRef = useRef<HTMLDivElement | null>(null)
   const patientTypeSelectRef = useRef<HTMLSelectElement | null>(null)
@@ -91,17 +93,27 @@ export default function SurveyPage() {
       setAnswers(initialAnswers)
       setPatientType('')
       setPatientName('')
+      setPatientInfoAnswers({})
     } catch (error) {
       console.error('Failed to fetch survey:', error)
       window.alert('설문을 불러오지 못했습니다.')
     }
   }
 
-  const handleScaleAnswer = (questionId: string, value: number | null, subQuestionId?: string) => {
-    setAnswers((prev) => ({
-      ...prev,
-      [makeKey(questionId, subQuestionId)]: value,
-    }))
+  const handleScaleAnswer = (
+    questionId: string,
+    value: number | null,
+    subQuestionId?: string,
+    allowNone?: boolean
+  ) => {
+     const key = makeKey(questionId, subQuestionId)
+     setAnswers((prev) => {
+      const currentValue = prev[key]
+      return {
+        ...prev,
+        [key]: currentValue === value ? undefined : value,
+      }
+    })
   }
 
   const handleTextAnswer = (questionId: string, value: string) => {
@@ -109,6 +121,20 @@ export default function SurveyPage() {
       ...prev,
       [makeKey(questionId)]: value,
     }))
+  }
+
+  const handlePatientInfoAnswer = (questionId: string, option: string) => {
+    setPatientInfoAnswers((prev) => {
+      const currentAnswers = prev[questionId] || []
+      const isSelected = currentAnswers.includes(option)
+      const newAnswers = isSelected
+        ? currentAnswers.filter((ans) => ans !== option)
+        : [...currentAnswers, option]
+      return {
+        ...prev,
+        [questionId]: newAnswers,
+      }
+    })
   }
 
   const validateAnswers = (_questions: Question[]): boolean => {
@@ -132,6 +158,16 @@ export default function SurveyPage() {
       window.alert(`${patientInfoConfig.patientNameLabel}을(를) 입력해주세요.`)
       patientInfoSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
+    }
+
+    if (patientInfoConfig.additionalQuestions && patientInfoConfig.additionalQuestions.length > 0) {
+      for (const question of patientInfoConfig.additionalQuestions) {
+        if (question.required && (!patientInfoAnswers[question.id] || patientInfoAnswers[question.id].length === 0)) {
+          window.alert(`${question.text}에 답변해주세요.`)
+          patientInfoSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          return
+        }
+      }
     }
 
     const patientTypeValue = patientType || undefined
@@ -168,6 +204,7 @@ export default function SurveyPage() {
           answers: responseAnswers,
           patientName: trimmedPatientName || undefined,
           patientType: patientTypeValue,
+          patientInfoAnswers: Object.keys(patientInfoAnswers).length > 0 ? patientInfoAnswers : undefined,
         }),
       })
 
@@ -254,6 +291,42 @@ export default function SurveyPage() {
                   />
                 </div>
               </div>
+
+              {patientInfoConfig.additionalQuestions && patientInfoConfig.additionalQuestions.length > 0 && (
+                <div className="mt-6 space-y-4 border-t border-gray-200 pt-4">
+                  <h3 className="text-md font-semibold text-gray-800">추가 질문</h3>
+                  {patientInfoConfig.additionalQuestions.map((question: PatientInfoQuestion) => {
+                    const selectedOptions = patientInfoAnswers[question.id] || []
+                    return (
+                      <div key={question.id} className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">
+                          {question.text}
+                          {question.required && <span className="text-red-500"> *</span>}
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          {question.options.map((option) => {
+                            const isSelected = selectedOptions.includes(option)
+                            return (
+                              <button
+                                key={option}
+                                type="button"
+                                onClick={() => handlePatientInfoAnswer(question.id, option)}
+                                className={`px-4 py-2 border rounded-lg text-sm font-medium transition-colors ${
+                                  isSelected
+                                    ? 'bg-blue-500 border-blue-500 text-white'
+                                    : 'bg-white border-gray-300 text-gray-700 hover:bg-blue-50'
+                                }`}
+                              >
+                                {option}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </section>
 
             <div className="space-y-6">
@@ -286,7 +359,7 @@ export default function SurveyPage() {
                                           name={key}
                                           value={value}
                                           checked={selectedValue === value}
-                                          onChange={() => handleScaleAnswer(question.id, value, sub.id)}
+                                          onChange={() => handleScaleAnswer(question.id, value, sub.id, question.includeNoneOption)}
                                           className="sr-only"
                                         />
                                         <span className="text-sm font-medium">{value}점</span>
@@ -301,7 +374,7 @@ export default function SurveyPage() {
                                           name={key}
                                           value=""
                                           checked={selectedValue === null}
-                                          onChange={() => handleScaleAnswer(question.id, null, sub.id)}
+                                          onChange={() => handleScaleAnswer(question.id, null, sub.id, true)}
                                           className="sr-only"
                                         />
                                         <span className="text-sm font-medium whitespace-nowrap">해당없음</span>
@@ -327,7 +400,7 @@ export default function SurveyPage() {
                                         name={key}
                                         value={value}
                                         checked={selectedValue === value}
-                                        onChange={() => handleScaleAnswer(question.id, value)}
+                                        onChange={() => handleScaleAnswer(question.id, value, undefined, question.includeNoneOption)}
                                         className="sr-only"
                                       />
                                       <span className="text-sm font-medium">{value}점</span>
@@ -343,7 +416,7 @@ export default function SurveyPage() {
                                       name={makeKey(question.id)}
                                       value=""
                                       checked={answers[makeKey(question.id)] === null}
-                                      onChange={() => handleScaleAnswer(question.id, null)}
+                                      onChange={() => handleScaleAnswer(question.id, null, undefined, true)}
                                       className="sr-only"
                                     />
                                     <span className="text-sm font-medium whitespace-nowrap">해당없음</span>

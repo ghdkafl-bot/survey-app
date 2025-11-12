@@ -47,7 +47,7 @@ export async function DELETE(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { surveyId, answers, patientName, patientType } = body
+    const { surveyId, answers, patientName, patientType, patientInfoAnswers } = body
 
     if (!surveyId || !answers) {
       return NextResponse.json(
@@ -70,6 +70,10 @@ export async function POST(request: NextRequest) {
       answers: normalizedAnswers,
       patientName,
       patientType,
+      patientInfoAnswers:
+        typeof patientInfoAnswers === 'object' && patientInfoAnswers !== null
+          ? patientInfoAnswers
+          : undefined,
     })
 
     return NextResponse.json(response, { status: 201 })
