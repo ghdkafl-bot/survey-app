@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -31,6 +31,8 @@ export default function SurveyPage() {
   const [patientName, setPatientName] = useState('')
   const [patientType, setPatientType] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const patientInfoSectionRef = useRef<HTMLDivElement | null>(null)
+  const patientTypeSelectRef = useRef<HTMLSelectElement | null>(null)
 
   const patientInfoConfig: PatientInfoConfig = useMemo(() => {
     const base: PatientInfoConfig = {
@@ -158,6 +160,8 @@ export default function SurveyPage() {
 
     if (patientInfoConfig.patientTypeRequired && !patientType) {
       alert(`${patientInfoConfig.patientTypeLabel}을(를) 선택해주세요.`)
+      patientInfoSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      patientTypeSelectRef.current?.focus({ preventScroll: true })
       return
     }
 
@@ -246,7 +250,10 @@ export default function SurveyPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-8">
-            <section className="p-5 sm:p-6 bg-gradient-to-br from-slate-50 to-white rounded-xl border border-gray-200">
+            <section
+              ref={patientInfoSectionRef}
+              className="p-5 sm:p-6 bg-gradient-to-br from-slate-50 to-white rounded-xl border border-gray-200"
+            >
               <h2 className="text-lg font-semibold text-gray-800 mb-4">환자 정보</h2>
               <div className="space-y-4 sm:grid sm:grid-cols-2 sm:gap-4 sm:space-y-0">
                 <div>
@@ -255,6 +262,7 @@ export default function SurveyPage() {
                     {patientInfoConfig.patientTypeRequired && <span className="text-red-500"> *</span>}
                   </label>
                   <select
+                    ref={patientTypeSelectRef}
                     value={patientType}
                     onChange={(e) => setPatientType(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
