@@ -539,6 +539,41 @@ export default function AdminPage() {
     }
   }
 
+  const handleCheckData = async () => {
+    try {
+      const res = await fetch('/api/admin/check-data')
+      if (!res.ok) {
+        throw new Error('Failed to check data')
+      }
+      const data = await res.json()
+      
+      if (data.success) {
+        const stats = data.data
+        const message = [
+          `📊 데이터베이스 상태`,
+          '',
+          `총 설문 수: ${stats.totalSurveys}개`,
+          `총 응답 수: ${stats.totalResponses}개`,
+          `총 답변 수: ${stats.totalAnswers}개`,
+          `추정 저장 공간: ${stats.estimatedSizeMB} MB`,
+          '',
+          ...stats.surveys.map((s: any) => 
+            `• ${s.surveyTitle}: ${s.responseCount}개 응답`
+          ),
+          '',
+          stats.summary.warning || '✅ 저장 공간 사용량이 정상입니다.',
+        ].join('\n')
+        
+        alert(message)
+      } else {
+        alert(`데이터 확인 실패: ${data.error || '알 수 없는 오류'}`)
+      }
+    } catch (error) {
+      console.error('Check data error:', error)
+      alert('데이터 확인에 실패했습니다.')
+    }
+  }
+
   const updatePatientTypeOption = (index: number, value: string) => {
     setPatientInfoConfig((prev) => {
       const nextOptions = [...prev.patientTypeOptions]
@@ -669,6 +704,13 @@ export default function AdminPage() {
           <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
             <h1 className="text-3xl font-bold text-gray-800">관리자 페이지</h1>
             <div className="flex gap-2">
+              <button
+                onClick={handleCheckData}
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors text-sm"
+                type="button"
+              >
+                데이터 상태 확인
+              </button>
               <Link
                 href="/"
                 className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
