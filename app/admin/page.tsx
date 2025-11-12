@@ -78,7 +78,7 @@ export default function AdminPage() {
 
   const fetchSurveys = async () => {
     try {
-      const res = await fetch('/api/surveys')
+      const res = await fetch('/api/surveys', { cache: 'no-store' })
       if (!res.ok) throw new Error('Failed to load surveys')
       const data = await res.json()
       setSurveys(data)
@@ -404,6 +404,35 @@ export default function AdminPage() {
     } catch (error) {
       console.error('Delete responses error:', error)
       alert('응답 삭제에 실패했습니다.')
+    }
+  }
+
+  const handleDeleteSurvey = async (surveyId: string, surveyTitle: string) => {
+    const confirmed = window.confirm(
+      [`설문 "${surveyTitle}"을 삭제하시겠습니까?`, '모든 응답도 함께 삭제됩니다.', '계속 진행하려면 확인을 눌러주세요.'].join('\n')
+    )
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      const res = await fetch(`/api/surveys/${surveyId}`, {
+        method: 'DELETE',
+      })
+
+      if (!res.ok) {
+        throw new Error('Failed to delete survey')
+      }
+
+      if (editingSurveyId === surveyId) {
+        resetForm()
+      }
+
+      alert('설문이 삭제되었습니다.')
+      await fetchSurveys()
+    } catch (error) {
+      console.error('Delete survey error:', error)
+      alert('설문 삭제에 실패했습니다.')
     }
   }
 
@@ -882,6 +911,13 @@ export default function AdminPage() {
                           응답 삭제
                         </button>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSurvey(survey.id, survey.title)}
+                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm w-full sm:w-auto"
+                      >
+                        설문 삭제
+                      </button>
                     </div>
                   </div>
                 ))}

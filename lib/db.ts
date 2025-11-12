@@ -419,5 +419,15 @@ export const db = {
 
     return targetIds.length
   },
+
+  deleteSurvey: async (id: string): Promise<boolean> => {
+    const { error } = await supabase
+      .from('surveys')
+      .delete()
+      .eq('id', id)
+
+    if (error) throw error
+    return true
+  },
 }
 

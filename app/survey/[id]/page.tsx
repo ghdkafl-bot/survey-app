@@ -33,7 +33,7 @@ export default function SurveyPage() {
 
   const fetchSurvey = async (id: string) => {
     try {
-      const res = await fetch(`/api/surveys/${id}`)
+      const res = await fetch(`/api/surveys/${id}`, { cache: 'no-store' })
       if (!res.ok) throw new Error('Failed to fetch survey')
       const data: Survey = await res.json()
       const initialAnswers: Record<string, number | string | null> = {}

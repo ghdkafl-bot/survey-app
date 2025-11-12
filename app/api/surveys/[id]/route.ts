@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> | { id: string } }
@@ -90,6 +92,33 @@ export async function PUT(
     console.error('Update survey error:', error)
     return NextResponse.json(
       { error: 'Failed to update survey', details: error instanceof Error ? error.message : String(error) },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> | { id: string } }
+) {
+  try {
+    const resolvedParams = await Promise.resolve(params)
+    const surveyId = resolvedParams.id
+
+    if (!surveyId) {
+      return NextResponse.json(
+        { error: 'Survey ID is required' },
+        { status: 400 }
+      )
+    }
+
+    await db.deleteSurvey(surveyId)
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Delete survey error:', error)
+    return NextResponse.json(
+      { error: 'Failed to delete survey', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     )
   }

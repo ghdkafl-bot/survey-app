@@ -13,7 +13,7 @@ export default function SurveysPage() {
 
   const fetchSurveys = async () => {
     try {
-      const res = await fetch('/api/surveys')
+      const res = await fetch('/api/surveys', { cache: 'no-store' })
       const data = await res.json()
       setSurveys(data)
     } catch (error) {
