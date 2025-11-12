@@ -59,6 +59,16 @@ export default function Home() {
               <p className="text-sm sm:text-base text-gray-600 mt-2">
                 환자 만족도 조사를 위한 설문 시스템입니다. 참여를 통해 더 나은 서비스를 만들어주세요.
               </p>
+              {surveys.length > 0 && (
+                <div className="mt-4">
+                  <Link
+                    href={`/survey/${surveys[0].id}`}
+                    className="inline-flex items-center justify-center px-5 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm sm:text-base font-semibold transition-colors shadow-sm"
+                  >
+                    설문 시작하기
+                  </Link>
+                </div>
+              )}
             </div>
             <div className="relative">
               <button
