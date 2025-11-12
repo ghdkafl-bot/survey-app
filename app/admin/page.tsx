@@ -1319,13 +1319,18 @@ export default function AdminPage() {
                         title: homepageConfig.title.trim(),
                         description: homepageConfig.description.trim(),
                       }),
+                      cache: 'no-store',
                     })
-                    if (!res.ok) throw new Error('Failed to update homepage config')
+                    if (!res.ok) {
+                      const errorData = await res.json().catch(() => ({ error: '알 수 없는 오류' }))
+                      throw new Error(errorData.error || 'Failed to update homepage config')
+                    }
+                    const savedConfig = await res.json()
+                    setHomepageConfig(savedConfig)
                     alert('홈페이지 설정이 저장되었습니다.')
-                    await fetchHomepageConfig()
                   } catch (error) {
                     console.error('Failed to update homepage config:', error)
-                    alert('홈페이지 설정 저장에 실패했습니다.')
+                    alert(`홈페이지 설정 저장에 실패했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
                   }
                 }}
                 className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-semibold transition-colors"
