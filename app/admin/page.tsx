@@ -44,6 +44,7 @@ interface QuestionInput {
   type: QuestionType
   subQuestions: SubQuestionInput[]
   includeNoneOption?: boolean
+  required?: boolean
 }
 
 interface QuestionGroupInput {
@@ -57,6 +58,7 @@ const defaultQuestion = (): QuestionInput => ({
   type: 'scale',
   subQuestions: [],
   includeNoneOption: false,
+  required: false,
 })
 
 const defaultGroup = (): QuestionGroupInput => ({
@@ -391,6 +393,7 @@ export default function AdminPage() {
               order: subIdx,
             })),
             includeNoneOption: question.type === 'scale' ? Boolean(question.includeNoneOption) : undefined,
+            required: typeof question.required === 'boolean' ? question.required : false,
           })),
         })),
         closingMessage,
@@ -598,6 +601,7 @@ export default function AdminPage() {
           type: question.type,
           subQuestions: question.subQuestions?.map((sub) => ({ id: sub.id, text: sub.text })) || [],
           includeNoneOption: question.includeNoneOption,
+          required: question.required || false,
         })),
       }))
     )
@@ -1094,6 +1098,25 @@ export default function AdminPage() {
                                 className={`px-4 py-2 rounded-lg text-sm font-medium border ${question.type === 'text' ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-300 text-gray-600 hover:bg-gray-100'}`}
                               >
                                 주관식
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setQuestionGroups((prev) => {
+                                    const next = [...prev]
+                                    const group = next[groupIndex]
+                                    const questions = [...group.questions]
+                                    questions[questionIndex] = {
+                                      ...questions[questionIndex],
+                                      required: !questions[questionIndex].required,
+                                    }
+                                    group.questions = questions
+                                    return next
+                                  })
+                                }
+                                className={`px-4 py-2 rounded-lg text-sm font-medium border ${question.required ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 text-gray-600 hover:bg-gray-100'}`}
+                              >
+                                {question.required ? '필수' : '선택'}
                               </button>
                               {question.type === 'scale' && (
                                 <button

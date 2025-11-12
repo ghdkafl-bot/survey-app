@@ -137,8 +137,39 @@ export default function SurveyPage() {
     })
   }
 
-  const validateAnswers = (_questions: Question[]): boolean => {
-    return true
+  const validateAnswers = (questions: Question[]): { valid: boolean; missingQuestion?: Question } => {
+    for (const question of questions) {
+      if (question.required) {
+        // 주 질문에 답변이 있는지 확인
+        const mainKey = makeKey(question.id)
+        const mainAnswer = answers[mainKey]
+        
+        if (question.type === 'scale') {
+          // 서브 질문이 있는 경우, 각 서브 질문에 답변이 있는지 확인
+          if (question.subQuestions.length > 0) {
+            // 모든 서브 질문에 답변이 있어야 함
+            for (const sub of question.subQuestions) {
+              const subKey = makeKey(question.id, sub.id)
+              const subAnswer = answers[subKey]
+              if (subAnswer === undefined || subAnswer === null) {
+                return { valid: false, missingQuestion: question }
+              }
+            }
+          } else {
+            // 서브 질문이 없는 경우, 주 질문에 답변이 있어야 함
+            if (mainAnswer === undefined || mainAnswer === null) {
+              return { valid: false, missingQuestion: question }
+            }
+          }
+        } else if (question.type === 'text') {
+          // 텍스트 질문: 값이 문자열이고 비어있지 않아야 함
+          if (typeof mainAnswer !== 'string' || mainAnswer.trim().length === 0) {
+            return { valid: false, missingQuestion: question }
+          }
+        }
+      }
+    }
+    return { valid: true }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -172,10 +203,19 @@ export default function SurveyPage() {
 
     const patientTypeValue = patientType || undefined
 
-    const allQuestionsValid = survey.questionGroups.every((group) => validateAnswers(group.questions))
-    if (!allQuestionsValid) {
-      window.alert('모든 문항에 답변해주세요.')
-      return
+    // 필수 질문 검증
+    for (const group of survey.questionGroups) {
+      const validation = validateAnswers(group.questions)
+      if (!validation.valid && validation.missingQuestion) {
+        const questionText = validation.missingQuestion.text
+        window.alert(`${questionText}에 답변해주세요.`)
+        // 해당 질문으로 스크롤 (간단한 구현)
+        const questionElement = document.querySelector(`[data-question-id="${validation.missingQuestion.id}"]`)
+        if (questionElement) {
+          questionElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+        return
+      }
     }
 
     setSubmitting(true)
@@ -340,14 +380,18 @@ export default function SurveyPage() {
                       const renderScale = () => (
                         <div className="space-y-3">
                           {question.subQuestions.length > 0 ? (
-                            question.subQuestions.map((sub, subIndex) => {
-                              const key = makeKey(question.id, sub.id)
-                              const selectedValue = answers[key]
-                              return (
-                                <div key={sub.id} className="space-y-2">
-                                  <p className="font-medium text-gray-700">
-                                    {questionIndex + 1}-{subIndex + 1}. {sub.text}
-                                  </p>
+                            <>
+                              {question.required && (
+                                <p className="text-sm text-gray-500 mb-2">* 필수 항목입니다</p>
+                              )}
+                              {question.subQuestions.map((sub, subIndex) => {
+                                const key = makeKey(question.id, sub.id)
+                                const selectedValue = answers[key]
+                                return (
+                                  <div key={sub.id} className="space-y-2">
+                                    <p className="font-medium text-gray-700">
+                                      {questionIndex + 1}-{subIndex + 1}. {sub.text}
+                                    </p>
                                   <div className="flex flex-wrap sm:grid sm:grid-cols-6 gap-2">
                                     {[1, 2, 3, 4, 5].map((value) => (
                                       <label
@@ -393,9 +437,13 @@ export default function SurveyPage() {
                                   </div>
                                 </div>
                               )
-                            })
+                            })}
+                            </>
                           ) : (
                             <div className="space-y-2">
+                              {question.required && (
+                                <p className="text-sm text-gray-500">* 필수 항목입니다</p>
+                              )}
                               <div className="flex flex-wrap sm:grid sm:grid-cols-6 gap-2">
                                 {[1, 2, 3, 4, 5].map((value) => {
                                   const key = makeKey(question.id)
@@ -463,9 +511,10 @@ export default function SurveyPage() {
                       }
 
                       return (
-                        <article key={question.id} className="rounded-xl border border-gray-200 p-4 bg-white shadow-sm">
+                        <article key={question.id} data-question-id={question.id} className="rounded-xl border border-gray-200 p-4 bg-white shadow-sm">
                           <h3 className="text-base sm:text-lg font-semibold text-gray-800">
                             {questionIndex + 1}. {question.text}
+                            {question.required && <span className="text-red-500 ml-1">*</span>}
                           </h3>
                           {question.type === 'text' ? renderText() : renderScale()}
                         </article>

@@ -92,6 +92,7 @@ export async function POST(request: NextRequest) {
           order: q.order ?? qIdx,
           type: q.type === 'text' ? 'text' : 'scale',
           includeNoneOption: q.type === 'scale' ? Boolean(q.includeNoneOption) : undefined,
+          required: typeof q.required === 'boolean' ? q.required : false,
           subQuestions: Array.isArray(q.subQuestions)
             ? q.subQuestions.slice(0, 5).map((sub: any, subIdx: number) => ({
                 id: sub.id,

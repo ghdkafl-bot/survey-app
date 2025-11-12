@@ -59,6 +59,7 @@ export interface Question {
   type: QuestionType
   subQuestions: SubQuestion[]
   includeNoneOption?: boolean
+  required?: boolean
 }
 
 export interface Survey {
@@ -140,6 +141,7 @@ const normalizeQuestion = (question: any, groupId: string, fallbackIdPrefix: str
     type,
     subQuestions,
     includeNoneOption: type === 'scale' ? Boolean(question?.includeNoneOption) : undefined,
+    required: typeof question?.required === 'boolean' ? question.required : false,
   }
 }
 
@@ -270,6 +272,7 @@ const mapSurveyRecord = (record: any): Survey => {
           order: question.order ?? 0,
           type: question.type === 'text' ? 'text' : 'scale',
           includeNoneOption: question.type === 'scale' ? Boolean(question.include_none_option) : undefined,
+          required: typeof question.required === 'boolean' ? question.required : false,
           subQuestions: (question.sub_questions ?? [])
             .sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0))
             .map((sub: any) => ({
@@ -301,23 +304,43 @@ const mapSurveyRecord = (record: any): Survey => {
   }
 }
 
-const mapResponseRecord = (record: any): Response => ({
-  id: record.id,
-  surveyId: record.survey_id,
-  patientName: record.patient_name ?? undefined,
-  patientType: record.patient_type ?? undefined,
-  submittedAt: record.submitted_at ?? new Date().toISOString(),
-  patientInfoAnswers:
-    typeof record.patient_info_answers === 'object' && record.patient_info_answers !== null
-      ? record.patient_info_answers
-      : undefined,
-  answers: (record.answers ?? []).map((answer: any) => ({
-    questionId: answer.question_id,
-    subQuestionId: answer.sub_question_id ?? undefined,
-    value: typeof answer.value === 'number' ? answer.value : answer.value === null ? null : undefined,
-    textValue: typeof answer.text_value === 'string' ? answer.text_value : undefined,
-  })),
-})
+const mapResponseRecord = (record: any): Response => {
+  // answers가 배열인지 확인
+  let answersArray: any[] = []
+  if (Array.isArray(record.answers)) {
+    answersArray = record.answers
+  } else if (record.answers && typeof record.answers === 'object') {
+    // Supabase가 객체 형태로 반환하는 경우 처리
+    answersArray = Object.values(record.answers)
+  }
+  
+  return {
+    id: record.id,
+    surveyId: record.survey_id,
+    patientName: record.patient_name ?? undefined,
+    patientType: record.patient_type ?? undefined,
+    submittedAt: record.submitted_at ?? new Date().toISOString(),
+    patientInfoAnswers:
+      typeof record.patient_info_answers === 'object' && record.patient_info_answers !== null
+        ? record.patient_info_answers
+        : undefined,
+    answers: answersArray
+      .map((answer: any) => {
+        // answer가 객체인지 확인
+        if (!answer || typeof answer !== 'object') {
+          console.warn(`[DB] mapResponseRecord - Invalid answer format:`, answer)
+          return null
+        }
+        return {
+          questionId: answer.question_id,
+          subQuestionId: answer.sub_question_id ?? undefined,
+          value: typeof answer.value === 'number' ? answer.value : answer.value === null ? null : undefined,
+          textValue: typeof answer.text_value === 'string' ? answer.text_value : undefined,
+        } as Answer
+      })
+      .filter((a): a is Answer => a !== null),
+  }
+}
 
 async function insertQuestionStructure(
   surveyId: string,
@@ -348,6 +371,7 @@ async function insertQuestionStructure(
           order: question.order ?? questionIdx,
           type: question.type,
           include_none_option: question.type === 'scale' ? Boolean(question.includeNoneOption) : null,
+          required: typeof question.required === 'boolean' ? question.required : false,
         })
         .select()
         .single()
@@ -417,6 +441,7 @@ export const db = {
             order,
             type,
             include_none_option,
+            required,
             sub_questions ( id, text, order )
           )
         )
@@ -450,6 +475,7 @@ export const db = {
             order,
             type,
             include_none_option,
+            required,
             sub_questions ( id, text, order )
           )
         )
@@ -552,6 +578,8 @@ export const db = {
 
   getResponsesBySurvey: async (surveyId: string): Promise<Response[]> => {
     const supabase = getSupabaseServiceClient()
+    console.log(`[DB] getResponsesBySurvey - surveyId: ${surveyId}`)
+    
     const { data, error } = await supabase
       .from('responses')
       .select(
@@ -560,16 +588,46 @@ export const db = {
       .eq('survey_id', surveyId)
       .order('submitted_at', { ascending: true })
 
-    if (error || !data) return []
-    return data.map((record: any) =>
-      mapResponseRecord({
-        ...record,
-        patient_info_answers:
-          typeof record.patient_info_answers === 'string'
-            ? JSON.parse(record.patient_info_answers)
-            : record.patient_info_answers,
+    if (error) {
+      console.error(`[DB] getResponsesBySurvey - Error:`, error)
+      return []
+    }
+    
+    if (!data) {
+      console.log(`[DB] getResponsesBySurvey - No data returned`)
+      return []
+    }
+    
+    console.log(`[DB] getResponsesBySurvey - Found ${data.length} responses`)
+    
+    if (data.length > 0) {
+      console.log(`[DB] getResponsesBySurvey - Sample record:`, {
+        id: data[0].id,
+        survey_id: data[0].survey_id,
+        answers: data[0].answers?.length || 0,
+        answers_data: data[0].answers?.slice(0, 2) || [],
       })
-    )
+    }
+    
+    const mapped = data.map((record: any) => {
+      try {
+        const mappedRecord = mapResponseRecord({
+          ...record,
+          patient_info_answers:
+            typeof record.patient_info_answers === 'string'
+              ? JSON.parse(record.patient_info_answers)
+              : record.patient_info_answers,
+        })
+        return mappedRecord
+      } catch (err) {
+        console.error(`[DB] getResponsesBySurvey - Mapping error for record ${record.id}:`, err)
+        return null
+      }
+    }).filter((r): r is Response => r !== null)
+    
+    console.log(`[DB] getResponsesBySurvey - Mapped ${mapped.length} responses`)
+    
+    return mapped
   },
 
   getAllResponses: async (): Promise<Response[]> => {

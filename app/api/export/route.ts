@@ -10,16 +10,34 @@ const sanitizeSheetName = (name: string) => {
 }
 
 const isWithinRange = (dateString: string, from?: string | null, to?: string | null) => {
-  const date = new Date(dateString).getTime()
-  if (Number.isNaN(date)) return false
+  if (!from && !to) return true
+  
+  const date = new Date(dateString)
+  if (Number.isNaN(date.getTime())) {
+    console.warn(`Invalid date string: ${dateString}`)
+    return false
+  }
+  
+  // 날짜만 비교 (시간 무시)
+  const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  
   if (from) {
-    const fromTime = new Date(from).getTime()
-    if (!Number.isNaN(fromTime) && date < fromTime) return false
+    const fromDate = new Date(from)
+    if (!Number.isNaN(fromDate.getTime())) {
+      const fromOnly = new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate())
+      if (dateOnly < fromOnly) return false
+    }
   }
+  
   if (to) {
-    const toTime = new Date(to).getTime()
-    if (!Number.isNaN(toTime) && date > toTime) return false
+    const toDate = new Date(to)
+    if (!Number.isNaN(toDate.getTime())) {
+      // 'to' 날짜의 끝 시간까지 포함 (23:59:59.999)
+      const toOnly = new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate(), 23, 59, 59, 999)
+      if (date > toOnly) return false
+    }
   }
+  
   return true
 }
 
@@ -45,10 +63,26 @@ export async function GET(request: NextRequest) {
     const from = request.nextUrl.searchParams.get('from')
     const to = request.nextUrl.searchParams.get('to')
 
+    console.log(`[Export] Fetching responses for survey ${surveyId}, from: ${from}, to: ${to}`)
+    
     const allResponses = await db.getResponsesBySurvey(surveyId)
+    console.log(`[Export] Total responses fetched: ${allResponses.length}`)
+    
+    if (allResponses.length > 0) {
+      console.log(`[Export] Sample response:`, {
+        id: allResponses[0].id,
+        submittedAt: allResponses[0].submittedAt,
+        answersCount: allResponses[0].answers?.length || 0,
+        patientName: allResponses[0].patientName,
+        patientType: allResponses[0].patientType,
+      })
+    }
+    
     const responses = allResponses.filter((response) =>
       !from && !to ? true : isWithinRange(response.submittedAt, from, to)
     )
+    
+    console.log(`[Export] Filtered responses: ${responses.length}`)
 
     const headers: string[] = ['제출일시', '환자 성함', '환자 유형']
     const questionDescriptors: { questionId: string; subQuestionId?: string; isText: boolean }[] = []
@@ -99,7 +133,7 @@ export async function GET(request: NextRequest) {
           ]
 
           questionDescriptors.forEach(({ questionId, subQuestionId, isText }) => {
-            const answer = response.answers.find((a) =>
+            const answer = response.answers?.find((a) =>
               a.questionId === questionId && (subQuestionId ? a.subQuestionId === subQuestionId : !a.subQuestionId)
             )
             if (!answer) {
@@ -107,12 +141,19 @@ export async function GET(request: NextRequest) {
             } else if (isText) {
               row.push(answer.textValue || '')
             } else {
-              row.push(typeof answer.value === 'number' ? answer.value : '')
+              // null 값도 처리 (해당없음 옵션)
+              if (answer.value === null) {
+                row.push('해당없음')
+              } else {
+                row.push(typeof answer.value === 'number' ? answer.value : '')
+              }
             }
           })
 
           excelData.push(row)
         })
+        
+        console.log(`[Export] Sheet "${typeKey}": ${excelData.length - 1} rows (${excelData.length - 1} responses + 1 header)`)
 
         const ws = XLSX.utils.aoa_to_sheet(excelData)
         const colWidths = headers.map(() => ({ wch: 30 }))

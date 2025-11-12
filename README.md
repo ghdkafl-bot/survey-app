@@ -93,7 +93,8 @@ create table questions (
   text text not null,
   "order" integer default 0,
   type text not null,
-  include_none_option boolean
+  include_none_option boolean,
+  required boolean default false
 );
 
 create table sub_questions (
@@ -134,6 +135,7 @@ create table homepage_config (
 ```sql
 alter table surveys add column if not exists patient_info_config jsonb;
 alter table responses add column if not exists patient_info_answers jsonb;
+alter table questions add column if not exists required boolean default false;
 
 create table if not exists homepage_config (
   id text primary key default 'default',
