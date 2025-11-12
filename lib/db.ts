@@ -19,6 +19,17 @@ export interface ClosingMessage {
   fontFamily?: string
 }
 
+export interface PatientInfoConfig {
+  patientTypeLabel: string
+  patientTypePlaceholder: string
+  patientTypeOptions: string[]
+  patientTypeRequired: boolean
+  patientTypeTextColor?: string
+  patientNameLabel: string
+  patientNamePlaceholder: string
+  patientNameRequired: boolean
+}
+
 export interface QuestionGroup {
   id: string
   surveyId: string
@@ -45,6 +56,7 @@ export interface Survey {
   backgroundColor?: string
   questionGroups: QuestionGroup[]
   closingMessage: ClosingMessage
+  patientInfoConfig: PatientInfoConfig
 }
 
 export interface Response {
@@ -61,6 +73,17 @@ export interface Answer {
   subQuestionId?: string
   value?: number | null
   textValue?: string | null
+}
+
+export const DEFAULT_PATIENT_INFO_CONFIG: PatientInfoConfig = {
+  patientTypeLabel: '환자 유형',
+  patientTypePlaceholder: '환자 유형을 선택하세요',
+  patientTypeOptions: ['외래', '3병동', '6병동', '종합검진'],
+  patientTypeRequired: true,
+  patientTypeTextColor: '#111827',
+  patientNameLabel: '환자 성함',
+  patientNamePlaceholder: '환자성함을 입력하세요 (선택사항)',
+  patientNameRequired: false,
 }
 
 const DEFAULT_CLOSING_MESSAGE: ClosingMessage = {
@@ -94,6 +117,94 @@ const normalizeClosingMessage = (closingMessage: any): ClosingMessage => ({
       }
     : {}),
 })
+
+const normalizePatientInfoConfig = (config: any): PatientInfoConfig => {
+  const options = Array.isArray(config?.patientTypeOptions)
+    ? config.patientTypeOptions
+        .map((value: unknown) => (typeof value === 'string' ? value : '')?.trim())
+        .filter((value: string) => value.length > 0)
+    : []
+
+  return {
+    patientTypeLabel:
+      typeof config?.patientTypeLabel === 'string' && config.patientTypeLabel.trim().length > 0
+        ? config.patientTypeLabel
+        : DEFAULT_PATIENT_INFO_CONFIG.patientTypeLabel,
+    patientTypePlaceholder:
+      typeof config?.patientTypePlaceholder === 'string' && config.patientTypePlaceholder.trim().length > 0
+        ? config.patientTypePlaceholder
+        : DEFAULT_PATIENT_INFO_CONFIG.patientTypePlaceholder,
+    patientTypeOptions: options.length > 0 ? options : [...DEFAULT_PATIENT_INFO_CONFIG.patientTypeOptions],
+    patientTypeRequired:
+      typeof config?.patientTypeRequired === 'boolean'
+        ? config.patientTypeRequired
+        : DEFAULT_PATIENT_INFO_CONFIG.patientTypeRequired,
+    patientTypeTextColor:
+      typeof config?.patientTypeTextColor === 'string' && config.patientTypeTextColor.trim().length > 0
+        ? config.patientTypeTextColor
+        : DEFAULT_PATIENT_INFO_CONFIG.patientTypeTextColor,
+    patientNameLabel:
+      typeof config?.patientNameLabel === 'string' && config.patientNameLabel.trim().length > 0
+        ? config.patientNameLabel
+        : DEFAULT_PATIENT_INFO_CONFIG.patientNameLabel,
+    patientNamePlaceholder:
+      typeof config?.patientNamePlaceholder === 'string' && config.patientNamePlaceholder.trim().length > 0
+        ? config.patientNamePlaceholder
+        : DEFAULT_PATIENT_INFO_CONFIG.patientNamePlaceholder,
+    patientNameRequired:
+      typeof config?.patientNameRequired === 'boolean'
+        ? config.patientNameRequired
+        : DEFAULT_PATIENT_INFO_CONFIG.patientNameRequired,
+  }
+}
+
+const normalizeSurvey = (survey: any): Survey => {
+  const surveyId = survey?.id || Date.now().toString()
+  const rawGroups = Array.isArray(survey?.questionGroups) ? survey.questionGroups : []
+  const questionGroups: QuestionGroup[] = rawGroups
+    .filter((group: any) => !DEPRECATED_GROUP_IDS.includes(group?.id))
+    .sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0))
+    .map((group: any) => {
+      const questions: Question[] = (group.questions ?? [])
+        .filter((question: any) => !DEPRECATED_QUESTION_IDS.includes(question?.id))
+        .sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0))
+        .map((question: any) => ({
+          id: question.id,
+          groupId: group.id,
+          text: question.text,
+          order: question.order ?? 0,
+          type: question.type === 'text' ? 'text' : 'scale',
+          includeNoneOption: question.type === 'scale' ? Boolean(question.includeNoneOption) : undefined,
+          subQuestions: (question.sub_questions ?? [])
+            .sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0))
+            .map((sub: any) => ({
+              id: sub.id,
+              questionId: question.id,
+              text: sub.text,
+              order: sub.order ?? 0,
+            })),
+        }))
+
+      return {
+        id: group.id,
+        surveyId: surveyId,
+        title: group.title,
+        order: group.order ?? 0,
+        questions,
+      }
+    })
+
+  return {
+    id: surveyId,
+    title: typeof survey?.title === 'string' ? survey.title : '',
+    description: typeof survey?.description === 'string' ? survey.description : undefined,
+    createdAt: typeof survey?.createdAt === 'string' ? survey.createdAt : new Date().toISOString(),
+    backgroundColor: typeof survey?.backgroundColor === 'string' ? survey.backgroundColor : undefined,
+    questionGroups,
+    closingMessage: normalizeClosingMessage(survey?.closingMessage),
+    patientInfoConfig: normalizePatientInfoConfig(survey?.patientInfoConfig),
+  }
+}
 
 const mapSurveyRecord = (record: any): Survey => {
   if (!record) throw new Error('Invalid survey record')
@@ -139,6 +250,7 @@ const mapSurveyRecord = (record: any): Survey => {
     backgroundColor: record.background_color ?? undefined,
     questionGroups,
     closingMessage: normalizeClosingMessage(record.closing_message),
+    patientInfoConfig: normalizePatientInfoConfig(record.patient_info_config),
   }
 }
 
@@ -213,6 +325,7 @@ export const db = {
   createSurvey: async (survey: Omit<Survey, 'id' | 'createdAt'>): Promise<Survey> => {
     const questionGroups = survey.questionGroups ?? []
     const closingMessage = normalizeClosingMessage(survey.closingMessage)
+    const patientInfoConfig = normalizePatientInfoConfig(survey.patientInfoConfig)
 
     const { data: insertedSurvey, error } = await supabase
       .from('surveys')
@@ -221,6 +334,7 @@ export const db = {
         description: survey.description ?? null,
         background_color: survey.backgroundColor ?? null,
         closing_message: closingMessage,
+        patient_info_config: patientInfoConfig,
       })
       .select()
       .single()
@@ -257,7 +371,7 @@ export const db = {
       .single()
 
     if (error) return undefined
-    return mapSurveyRecord(data)
+    return mapSurveyRecord({ ...data, patient_info: data.patient_info ?? null })
   },
 
   getAllSurveys: async (): Promise<Survey[]> => {
@@ -269,6 +383,7 @@ export const db = {
         description,
         background_color,
         closing_message,
+        patient_info,
         created_at,
         question_groups (
           id,
@@ -302,6 +417,10 @@ export const db = {
 
     if (survey.closingMessage !== undefined) {
       payload.closing_message = normalizeClosingMessage(survey.closingMessage)
+    }
+
+    if (survey.patientInfoConfig !== undefined) {
+      payload.patient_info_config = normalizePatientInfoConfig(survey.patientInfoConfig)
     }
 
     if (Object.keys(payload).length > 0) {

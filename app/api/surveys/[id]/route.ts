@@ -42,7 +42,7 @@ export async function PUT(
     }
     
     const body = await request.json()
-    const { title, description, backgroundColor, questionGroups, closingMessage } = body
+    const { title, description, backgroundColor, questionGroups, closingMessage, patientInfoConfig } = body
 
     if (!title || !questionGroups || questionGroups.length === 0) {
       return NextResponse.json(
@@ -78,6 +78,7 @@ export async function PUT(
         })),
       })),
       closingMessage,
+      patientInfoConfig,
     })
 
     if (!updatedSurvey) {

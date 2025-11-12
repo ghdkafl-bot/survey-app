@@ -8,6 +8,7 @@
 2. **설문 생성**: 여러 문항을 추가할 수 있는 설문 생성 기능
 3. **설문 응답**: 1-5점 척도 및 해당없음 옵션 (상호 배타적 라디오 버튼)
 4. **Excel 다운로드**: 설문 결과를 Excel 파일로 다운로드
+5. **환자 정보 커스터마이징**: 환자 유형/성함 라벨, 선택지, 필수 여부 등을 관리자에서 직접 설정
 
 ## 기술 스택
 
@@ -74,6 +75,7 @@ create table surveys (
   title text not null,
   description text,
   background_color text,
+  patient_info_config jsonb,
   closing_message jsonb,
   created_at timestamptz not null default now()
 );
@@ -117,6 +119,12 @@ create table answers (
   value integer,
   text_value text
 );
+```
+
+이미 테이블을 만든 상태라면 다음 명령으로 `patient_info_config` 컬럼을 추가하세요.
+
+```sql
+alter table surveys add column if not exists patient_info_config jsonb;
 ```
 
 3. 필요하다면 Row Level Security(RLS)를 비활성화하거나 정책을 추가합니다. (기본 상태는 비활성화)

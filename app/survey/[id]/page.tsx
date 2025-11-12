@@ -3,7 +3,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Survey, Answer, ClosingMessage, Question } from '@/lib/db'
+import {
+  Survey,
+  Answer,
+  ClosingMessage,
+  Question,
+  PatientInfoConfig,
+  DEFAULT_PATIENT_INFO_CONFIG,
+} from '@/lib/db'
 
 const ANSWER_KEY_SEPARATOR = '__'
 
@@ -24,6 +31,32 @@ export default function SurveyPage() {
   const [patientName, setPatientName] = useState('')
   const [patientType, setPatientType] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  const patientInfoConfig: PatientInfoConfig = useMemo(() => {
+    const base: PatientInfoConfig = {
+      ...DEFAULT_PATIENT_INFO_CONFIG,
+      patientTypeOptions: [...DEFAULT_PATIENT_INFO_CONFIG.patientTypeOptions],
+    }
+
+    if (!survey) {
+      return base
+    }
+
+    const source = survey.patientInfoConfig
+
+    return {
+      ...base,
+      ...source,
+      patientTypeOptions:
+        source?.patientTypeOptions?.length
+          ? [...source.patientTypeOptions]
+          : [...DEFAULT_PATIENT_INFO_CONFIG.patientTypeOptions],
+      patientTypeTextColor:
+        source?.patientTypeTextColor?.trim().length
+          ? source.patientTypeTextColor
+          : base.patientTypeTextColor,
+    }
+  }, [survey])
 
   useEffect(() => {
     if (params.id) {
@@ -54,6 +87,8 @@ export default function SurveyPage() {
       })
       setSurvey(data)
       setAnswers(initialAnswers)
+      setPatientType('')
+      setPatientName('')
     } catch (error) {
       console.error('Failed to fetch survey:', error)
       alert('설문을 불러오지 못했습니다.')
@@ -121,10 +156,18 @@ export default function SurveyPage() {
 
     if (!survey) return
 
-    if (!patientType) {
-      alert('환자 유형을 선택해주세요.')
+    if (patientInfoConfig.patientTypeRequired && !patientType) {
+      alert(`${patientInfoConfig.patientTypeLabel}을(를) 선택해주세요.`)
       return
     }
+
+    const trimmedPatientName = patientName.trim()
+    if (patientInfoConfig.patientNameRequired && !trimmedPatientName) {
+      alert(`${patientInfoConfig.patientNameLabel}을(를) 입력해주세요.`)
+      return
+    }
+
+    const patientTypeValue = patientType || undefined
 
     const allQuestionsValid = survey.questionGroups.every((group) => validateAnswers(group.questions))
     if (!allQuestionsValid) {
@@ -156,8 +199,8 @@ export default function SurveyPage() {
         body: JSON.stringify({
           surveyId: survey.id,
           answers: responseAnswers,
-          patientName: patientName.trim() || undefined,
-          patientType,
+          patientName: trimmedPatientName || undefined,
+          patientType: patientTypeValue,
         }),
       })
 
@@ -208,28 +251,39 @@ export default function SurveyPage() {
               <div className="space-y-4 sm:grid sm:grid-cols-2 sm:gap-4 sm:space-y-0">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    환자 유형 <span className="text-red-500">*</span>
+                    {patientInfoConfig.patientTypeLabel}
+                    {patientInfoConfig.patientTypeRequired && <span className="text-red-500"> *</span>}
                   </label>
                   <select
                     value={patientType}
                     onChange={(e) => setPatientType(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    required={patientInfoConfig.patientTypeRequired}
+                    style={{
+                      color: patientType
+                        ? patientInfoConfig.patientTypeTextColor || '#111827'
+                        : '#9ca3af',
+                    }}
                   >
-                    <option value="">선택하세요</option>
-                    <option value="외래">외래</option>
-                    <option value="3병동">3병동</option>
-                    <option value="6병동">6병동</option>
-                    <option value="종합검진">종합검진</option>
+                    <option value="">{patientInfoConfig.patientTypePlaceholder}</option>
+                    {patientInfoConfig.patientTypeOptions.map((option) => (
+                      <option key={option} value={option} className="text-gray-900">
+                        {option}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">환자 성함</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {patientInfoConfig.patientNameLabel}
+                    {patientInfoConfig.patientNameRequired && <span className="text-red-500"> *</span>}
+                  </label>
                   <input
                     value={patientName}
                     onChange={(e) => setPatientName(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="환자성함을 입력하세요 (선택사항)"
+                    placeholder={patientInfoConfig.patientNamePlaceholder}
+                    required={patientInfoConfig.patientNameRequired}
                   />
                 </div>
               </div>

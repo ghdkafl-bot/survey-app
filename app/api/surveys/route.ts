@@ -18,7 +18,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { title, description, backgroundColor, questionGroups, closingMessage } = body
+    const { title, description, backgroundColor, questionGroups, closingMessage, patientInfoConfig } = body
 
     if (!title || !questionGroups || questionGroups.length === 0) {
       return NextResponse.json(
@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
         })),
       })),
       closingMessage,
+      patientInfoConfig,
     })
 
     return NextResponse.json(survey, { status: 201 })

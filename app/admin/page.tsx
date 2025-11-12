@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Survey, QuestionType, ClosingMessage } from '@/lib/db'
+import {
+  Survey,
+  QuestionType,
+  ClosingMessage,
+  PatientInfoConfig,
+  DEFAULT_PATIENT_INFO_CONFIG,
+} from '@/lib/db'
 
 const ADMIN_ID = 'guamct'
 const ADMIN_PW = 'Hosp7533!!'
@@ -18,6 +24,11 @@ const DEFAULT_CLOSING_MESSAGE: ClosingMessage = {
   textAlign: 'center',
   fontFamily: 'inherit',
 }
+
+const createDefaultPatientInfoConfig = (): PatientInfoConfig => ({
+  ...DEFAULT_PATIENT_INFO_CONFIG,
+  patientTypeOptions: [...DEFAULT_PATIENT_INFO_CONFIG.patientTypeOptions],
+})
 
 interface SubQuestionInput {
   id?: string
@@ -64,6 +75,7 @@ export default function AdminPage() {
   const [backgroundColor, setBackgroundColor] = useState(DEFAULT_BACKGROUND)
   const [questionGroups, setQuestionGroups] = useState<QuestionGroupInput[]>([defaultGroup()])
   const [closingMessage, setClosingMessage] = useState<ClosingMessage>(DEFAULT_CLOSING_MESSAGE)
+  const [patientInfoConfig, setPatientInfoConfig] = useState<PatientInfoConfig>(createDefaultPatientInfoConfig())
   const [loading, setLoading] = useState(false)
   const [exportRanges, setExportRanges] = useState<Record<string, { from: string; to: string }>>({})
   const [purgeRanges, setPurgeRanges] = useState<Record<string, { from: string; to: string }>>({})
@@ -114,7 +126,8 @@ export default function AdminPage() {
     setTitle('')
     setDescription('')
     setBackgroundColor(DEFAULT_BACKGROUND)
-    setClosingMessage(DEFAULT_CLOSING_MESSAGE)
+    setClosingMessage({ ...DEFAULT_CLOSING_MESSAGE })
+    setPatientInfoConfig(createDefaultPatientInfoConfig())
     setQuestionGroups([defaultGroup()])
     setShowCreateForm(false)
     setEditingSurveyId(null)
@@ -271,6 +284,49 @@ export default function AdminPage() {
       return
     }
 
+    const typeLabel = patientInfoConfig.patientTypeLabel?.trim()
+    if (!typeLabel) {
+      alert('환자 유형 라벨을 입력해주세요.')
+      return
+    }
+
+    const typePlaceholder = patientInfoConfig.patientTypePlaceholder?.trim()
+    if (!typePlaceholder) {
+      alert('환자 유형 선택 안내 문구를 입력해주세요.')
+      return
+    }
+
+    const nameLabel = patientInfoConfig.patientNameLabel?.trim()
+    if (!nameLabel) {
+      alert('환자 성함 라벨을 입력해주세요.')
+      return
+    }
+
+    const namePlaceholder = patientInfoConfig.patientNamePlaceholder?.trim()
+    if (!namePlaceholder) {
+      alert('환자 성함 입력 안내 문구를 입력해주세요.')
+      return
+    }
+
+    const sanitizedTypeOptions = patientInfoConfig.patientTypeOptions
+      .map((option) => option.trim())
+      .filter((option) => option.length > 0)
+
+    if (sanitizedTypeOptions.length === 0) {
+      alert('환자 유형 선택지를 하나 이상 입력해주세요.')
+      return
+    }
+
+    const sanitizedPatientInfoConfig: PatientInfoConfig = {
+      ...patientInfoConfig,
+      patientTypeLabel: typeLabel,
+      patientTypePlaceholder: typePlaceholder,
+      patientTypeOptions: sanitizedTypeOptions,
+      patientTypeTextColor: (patientInfoConfig.patientTypeTextColor?.trim() || DEFAULT_PATIENT_INFO_CONFIG.patientTypeTextColor) ?? '#111827',
+      patientNameLabel: nameLabel,
+      patientNamePlaceholder: namePlaceholder,
+    }
+
     setLoading(true)
     try {
       const payload = {
@@ -295,6 +351,7 @@ export default function AdminPage() {
           })),
         })),
         closingMessage,
+        patientInfoConfig: sanitizedPatientInfoConfig,
       }
 
       const url = editingSurveyId ? `/api/surveys/${editingSurveyId}` : '/api/surveys'
@@ -436,6 +493,31 @@ export default function AdminPage() {
     }
   }
 
+  const updatePatientTypeOption = (index: number, value: string) => {
+    setPatientInfoConfig((prev) => {
+      const nextOptions = [...prev.patientTypeOptions]
+      nextOptions[index] = value
+      return {
+        ...prev,
+        patientTypeOptions: nextOptions,
+      }
+    })
+  }
+
+  const addPatientTypeOption = () => {
+    setPatientInfoConfig((prev) => ({
+      ...prev,
+      patientTypeOptions: [...prev.patientTypeOptions, ''],
+    }))
+  }
+
+  const removePatientTypeOption = (index: number) => {
+    setPatientInfoConfig((prev) => ({
+      ...prev,
+      patientTypeOptions: prev.patientTypeOptions.filter((_, i) => i !== index),
+    }))
+  }
+
   const startEdit = (survey: Survey) => {
     setEditingSurveyId(survey.id)
     setTitle(survey.title)
@@ -445,6 +527,14 @@ export default function AdminPage() {
       ...DEFAULT_CLOSING_MESSAGE,
       ...survey.closingMessage,
       text: survey.closingMessage?.text || DEFAULT_CLOSING_MESSAGE.text,
+    })
+    setPatientInfoConfig({
+      ...DEFAULT_PATIENT_INFO_CONFIG,
+      ...survey.patientInfoConfig,
+      patientTypeOptions:
+        survey.patientInfoConfig?.patientTypeOptions?.length
+          ? [...survey.patientInfoConfig.patientTypeOptions]
+          : [...DEFAULT_PATIENT_INFO_CONFIG.patientTypeOptions],
     })
     setQuestionGroups(
       survey.questionGroups.map((group) => ({
@@ -593,6 +683,157 @@ export default function AdminPage() {
                   </div>
                 </div>
               </div>
+
+              <section className="space-y-5 border border-emerald-200 rounded-xl bg-white p-5">
+                <div className="flex flex-wrap justify-between items-center gap-2">
+                  <h2 className="text-lg font-semibold text-gray-800">환자 정보 설정</h2>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">환자 유형 라벨 *</label>
+                    <input
+                      value={patientInfoConfig.patientTypeLabel}
+                      onChange={(e) =>
+                        setPatientInfoConfig((prev) => ({ ...prev, patientTypeLabel: e.target.value }))
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="예: 환자 유형"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">환자 유형 안내 문구 *</label>
+                    <input
+                      value={patientInfoConfig.patientTypePlaceholder}
+                      onChange={(e) =>
+                        setPatientInfoConfig((prev) => ({ ...prev, patientTypePlaceholder: e.target.value }))
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="예: 환자 유형을 선택하세요"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">환자 유형 텍스트 색상</label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={patientInfoConfig.patientTypeTextColor || '#111827'}
+                        onChange={(e) =>
+                          setPatientInfoConfig((prev) => ({ ...prev, patientTypeTextColor: e.target.value }))
+                        }
+                        className="h-10 w-16 border border-gray-300 rounded cursor-pointer"
+                      />
+                      <input
+                        value={patientInfoConfig.patientTypeTextColor || '#111827'}
+                        onChange={(e) =>
+                          setPatientInfoConfig((prev) => ({ ...prev, patientTypeTextColor: e.target.value }))
+                        }
+                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="#111827"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">환자 유형 필수 여부</label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPatientInfoConfig((prev) => ({
+                          ...prev,
+                          patientTypeRequired: !prev.patientTypeRequired,
+                        }))
+                      }
+                      className={`w-full px-4 py-2 rounded-lg border text-sm font-semibold transition-colors ${
+                        patientInfoConfig.patientTypeRequired
+                          ? 'bg-blue-500 border-blue-500 text-white'
+                          : 'border-gray-300 text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      {patientInfoConfig.patientTypeRequired ? '필수로 설정됨' : '선택 사항'}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">환자 유형 선택지 *</label>
+                  <div className="space-y-2">
+                    {patientInfoConfig.patientTypeOptions.map((option, index) => (
+                      <div key={index} className="flex gap-2">
+                        <input
+                          value={option}
+                          onChange={(e) => updatePatientTypeOption(index, e.target.value)}
+                          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder={`선택지 ${index + 1}`}
+                        />
+                        {patientInfoConfig.patientTypeOptions.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removePatientTypeOption(index)}
+                            className="px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm"
+                          >
+                            삭제
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={addPatientTypeOption}
+                      className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-sm"
+                    >
+                      + 선택지 추가
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">환자 성함 라벨 *</label>
+                    <input
+                      value={patientInfoConfig.patientNameLabel}
+                      onChange={(e) =>
+                        setPatientInfoConfig((prev) => ({ ...prev, patientNameLabel: e.target.value }))
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="예: 환자 성함"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">환자 성함 안내 문구 *</label>
+                    <input
+                      value={patientInfoConfig.patientNamePlaceholder}
+                      onChange={(e) =>
+                        setPatientInfoConfig((prev) => ({ ...prev, patientNamePlaceholder: e.target.value }))
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="예: 환자성함을 입력하세요 (선택사항)"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">환자 성함 필수 여부</label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPatientInfoConfig((prev) => ({
+                          ...prev,
+                          patientNameRequired: !prev.patientNameRequired,
+                        }))
+                      }
+                      className={`w-full px-4 py-2 rounded-lg border text-sm font-semibold transition-colors ${
+                        patientInfoConfig.patientNameRequired
+                          ? 'bg-blue-500 border-blue-500 text-white'
+                          : 'border-gray-300 text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      {patientInfoConfig.patientNameRequired ? '필수로 설정됨' : '선택 사항'}
+                    </button>
+                  </div>
+                </div>
+              </section>
 
               <section className="space-y-4 border border-blue-200 rounded-xl bg-white p-5">
                 <div className="flex flex-wrap justify-between items-center gap-2">
