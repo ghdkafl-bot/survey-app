@@ -643,25 +643,41 @@ export const db = {
 
   getHomepageConfig: async (): Promise<HomepageConfig> => {
     const supabase = getSupabaseServiceClient()
-    const { data, error } = await supabase
-      .from('homepage_config')
-      .select('title, description')
-      .eq('id', 'default')
-      .maybeSingle()
+    
+    try {
+      const { data, error } = await supabase
+        .from('homepage_config')
+        .select('title, description')
+        .eq('id', 'default')
+        .maybeSingle()
 
-    if (error || !data) {
+      if (error) {
+        console.error('Error fetching homepage config:', error)
+        // 테이블이 없을 수 있으므로 기본값 반환
+        if (error.code === 'PGRST116' || error.message?.includes('relation') || error.message?.includes('does not exist')) {
+          console.warn('homepage_config table does not exist, using default config')
+        }
+        return { ...DEFAULT_HOMEPAGE_CONFIG }
+      }
+
+      if (!data) {
+        console.log('No homepage config found in database, using default')
+        return { ...DEFAULT_HOMEPAGE_CONFIG }
+      }
+
+      return {
+        title:
+          typeof data.title === 'string' && data.title.trim().length > 0
+            ? data.title.trim()
+            : DEFAULT_HOMEPAGE_CONFIG.title,
+        description:
+          typeof data.description === 'string' && data.description.trim().length > 0
+            ? data.description.trim()
+            : DEFAULT_HOMEPAGE_CONFIG.description,
+      }
+    } catch (error) {
+      console.error('Exception in getHomepageConfig:', error)
       return { ...DEFAULT_HOMEPAGE_CONFIG }
-    }
-
-    return {
-      title:
-        typeof data.title === 'string' && data.title.trim().length > 0
-          ? data.title.trim()
-          : DEFAULT_HOMEPAGE_CONFIG.title,
-      description:
-        typeof data.description === 'string' && data.description.trim().length > 0
-          ? data.description.trim()
-          : DEFAULT_HOMEPAGE_CONFIG.description,
     }
   },
 
@@ -674,27 +690,43 @@ export const db = {
       ? config.description.trim()
       : DEFAULT_HOMEPAGE_CONFIG.description
 
-    const { data, error: upsertError } = await supabase
-      .from('homepage_config')
-      .upsert(
-        {
-          id: 'default',
-          title,
-          description,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: 'id',
-        }
-      )
-      .select('title, description')
-      .single()
+    console.log('db.updateHomepageConfig - Attempting to upsert:', { id: 'default', title, description })
 
-    if (upsertError) throw upsertError
+    try {
+      const { data, error: upsertError } = await supabase
+        .from('homepage_config')
+        .upsert(
+          {
+            id: 'default',
+            title,
+            description,
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: 'id',
+          }
+        )
+        .select('title, description')
+        .single()
 
-    return {
-      title: data.title,
-      description: data.description,
+      if (upsertError) {
+        console.error('Supabase upsert error:', upsertError)
+        throw new Error(`Database error: ${upsertError.message} (code: ${upsertError.code})`)
+      }
+
+      if (!data) {
+        console.error('No data returned from upsert')
+        throw new Error('No data returned from database')
+      }
+
+      console.log('db.updateHomepageConfig - Success:', data)
+      return {
+        title: data.title,
+        description: data.description,
+      }
+    } catch (error) {
+      console.error('db.updateHomepageConfig - Exception:', error)
+      throw error
     }
   },
 }

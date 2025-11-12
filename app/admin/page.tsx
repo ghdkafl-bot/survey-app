@@ -1311,26 +1311,40 @@ export default function AdminPage() {
                     alert('제목과 설명을 모두 입력해주세요.')
                     return
                   }
+                  
+                  const titleToSave = homepageConfig.title.trim()
+                  const descriptionToSave = homepageConfig.description.trim()
+                  
+                  console.log('Saving homepage config:', { title: titleToSave, description: descriptionToSave })
+                  
                   try {
                     const res = await fetch('/api/homepage-config', {
                       method: 'PUT',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
-                        title: homepageConfig.title.trim(),
-                        description: homepageConfig.description.trim(),
+                        title: titleToSave,
+                        description: descriptionToSave,
                       }),
                       cache: 'no-store',
                     })
+                    
+                    const responseData = await res.json()
+                    console.log('API response:', { status: res.status, ok: res.ok, data: responseData })
+                    
                     if (!res.ok) {
-                      const errorData = await res.json().catch(() => ({ error: '알 수 없는 오류' }))
-                      throw new Error(errorData.error || 'Failed to update homepage config')
+                      const errorMsg = responseData.details || responseData.error || '알 수 없는 오류'
+                      console.error('API error:', errorMsg)
+                      alert(`홈페이지 설정 저장에 실패했습니다: ${errorMsg}\n\n브라우저 콘솔을 확인해주세요.`)
+                      return
                     }
-                    const savedConfig = await res.json()
-                    setHomepageConfig(savedConfig)
+                    
+                    console.log('Config saved successfully:', responseData)
+                    setHomepageConfig(responseData)
                     alert('홈페이지 설정이 저장되었습니다.')
                   } catch (error) {
                     console.error('Failed to update homepage config:', error)
-                    alert(`홈페이지 설정 저장에 실패했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+                    const errorMsg = error instanceof Error ? error.message : '알 수 없는 오류'
+                    alert(`홈페이지 설정 저장에 실패했습니다: ${errorMsg}\n\n브라우저 콘솔을 확인해주세요.`)
                   }
                 }}
                 className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-semibold transition-colors"

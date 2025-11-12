@@ -35,12 +35,20 @@ export async function PUT(request: NextRequest) {
       )
     }
 
+    console.log('Updating homepage config:', { title, description })
     const config = await db.updateHomepageConfig({ title, description })
+    console.log('Homepage config updated successfully:', config)
     return NextResponse.json(config)
   } catch (error) {
     console.error('Failed to update homepage config:', error)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorDetails = error instanceof Error ? error.stack : undefined
+    console.error('Error details:', errorDetails)
     return NextResponse.json(
-      { error: 'Failed to update homepage config' },
+      { 
+        error: 'Failed to update homepage config',
+        details: errorMessage,
+      },
       { status: 500 }
     )
   }
