@@ -79,10 +79,10 @@ export default function SurveyPage() {
           } else {
             if (question.subQuestions.length > 0) {
               question.subQuestions.forEach((sub) => {
-                initialAnswers[makeKey(question.id, sub.id)] = undefined
+                initialAnswers[makeKey(question.id, sub.id)] = question.includeNoneOption ? null : undefined
               })
             } else {
-              initialAnswers[makeKey(question.id)] = undefined
+              initialAnswers[makeKey(question.id)] = question.includeNoneOption ? null : undefined
             }
           }
         })
@@ -125,27 +125,15 @@ export default function SurveyPage() {
           for (const sub of question.subQuestions) {
             const key = makeKey(question.id, sub.id)
             const value = answers[key]
-            if (allowNone) {
-              if (!(typeof value === 'number' || value === null)) {
-                return false
-              }
-            } else {
-              if (typeof value !== 'number') {
-                return false
-              }
+            if (!allowNone && typeof value !== 'number') {
+              return false
             }
           }
         } else {
           const key = makeKey(question.id)
           const value = answers[key]
-          if (allowNone) {
-            if (!(typeof value === 'number' || value === null)) {
-              return false
-            }
-          } else {
-            if (typeof value !== 'number') {
-              return false
-            }
+          if (!allowNone && typeof value !== 'number') {
+            return false
           }
         }
       }
@@ -158,16 +146,16 @@ export default function SurveyPage() {
 
     if (!survey) return
 
-    if (patientInfoConfig.patientTypeRequired && !patientType) {
-      alert(`${patientInfoConfig.patientTypeLabel}을(를) 선택해주세요.`)
+    if (patientInfoConfig.patientTypeRequired && !patientType.trim()) {
+      window.alert(`${patientInfoConfig.patientTypeLabel}을(를) 선택해주세요.`)
       patientInfoSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      patientTypeSelectRef.current?.focus({ preventScroll: true })
+      setTimeout(() => patientTypeSelectRef.current?.focus({ preventScroll: true }), 100)
       return
     }
 
     const trimmedPatientName = patientName.trim()
     if (patientInfoConfig.patientNameRequired && !trimmedPatientName) {
-      alert(`${patientInfoConfig.patientNameLabel}을(를) 입력해주세요.`)
+      window.alert(`${patientInfoConfig.patientNameLabel}을(를) 입력해주세요.`)
       return
     }
 
