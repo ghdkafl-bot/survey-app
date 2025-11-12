@@ -1,4 +1,4 @@
-import { supabase } from './supabaseClient'
+import { getSupabaseServiceClient } from './supabaseClient'
 
 export type QuestionType = 'scale' | 'text'
 
@@ -272,6 +272,7 @@ async function insertQuestionStructure(
   surveyId: string,
   questionGroups: QuestionGroup[]
 ) {
+  const supabase = getSupabaseServiceClient()
   for (const [groupIdx, group] of questionGroups.entries()) {
     const { data: insertedGroup, error: groupError } = await supabase
       .from('question_groups')
@@ -323,6 +324,7 @@ async function insertQuestionStructure(
 
 export const db = {
   createSurvey: async (survey: Omit<Survey, 'id' | 'createdAt'>): Promise<Survey> => {
+    const supabase = getSupabaseServiceClient()
     const questionGroups = survey.questionGroups ?? []
     const closingMessage = normalizeClosingMessage(survey.closingMessage)
     const patientInfoConfig = normalizePatientInfoConfig(survey.patientInfoConfig)
@@ -349,6 +351,7 @@ export const db = {
   },
 
   getSurvey: async (id: string): Promise<Survey | undefined> => {
+    const supabase = getSupabaseServiceClient()
     const { data, error } = await supabase
       .from('surveys')
       .select(`
@@ -375,6 +378,7 @@ export const db = {
   },
 
   getAllSurveys: async (): Promise<Survey[]> => {
+    const supabase = getSupabaseServiceClient()
     const { data, error } = await supabase
       .from('surveys')
       .select(`
@@ -409,6 +413,7 @@ export const db = {
     id: string,
     survey: Partial<Omit<Survey, 'id' | 'createdAt'>>
   ): Promise<Survey | undefined> => {
+    const supabase = getSupabaseServiceClient()
     const payload: Record<string, any> = {}
 
     if (survey.title !== undefined) payload.title = survey.title
@@ -447,6 +452,7 @@ export const db = {
   },
 
   createResponse: async (response: Omit<Response, 'id' | 'submittedAt'>): Promise<Response> => {
+    const supabase = getSupabaseServiceClient()
     const { data: insertedResponse, error } = await supabase
       .from('responses')
       .insert({
@@ -487,6 +493,7 @@ export const db = {
   },
 
   getResponsesBySurvey: async (surveyId: string): Promise<Response[]> => {
+    const supabase = getSupabaseServiceClient()
     const { data, error } = await supabase
       .from('responses')
       .select('id, survey_id, patient_name, patient_type, submitted_at, answers (id, question_id, sub_question_id, value, text_value)')
@@ -498,6 +505,7 @@ export const db = {
   },
 
   getAllResponses: async (): Promise<Response[]> => {
+    const supabase = getSupabaseServiceClient()
     const { data, error } = await supabase
       .from('responses')
       .select('id, survey_id, patient_name, patient_type, submitted_at, answers (id, question_id, sub_question_id, value, text_value)')
@@ -512,6 +520,7 @@ export const db = {
     from?: string,
     to?: string
   ): Promise<number> => {
+    const supabase = getSupabaseServiceClient()
     let query = supabase
       .from('responses')
       .select('id')
@@ -544,6 +553,7 @@ export const db = {
   },
 
   deleteSurvey: async (id: string): Promise<boolean> => {
+    const supabase = getSupabaseServiceClient()
     const { error } = await supabase
       .from('surveys')
       .delete()
