@@ -3,22 +3,60 @@ import { db } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    console.log('[API] GET /api/homepage-config - Fetching config')
+    console.log('[API] Request URL:', request.url)
+    console.log('[API] Request headers:', Object.fromEntries(request.headers.entries()))
+    
     const config = await db.getHomepageConfig()
-    const response = NextResponse.json(config)
-    // 캐시 제어 헤더 추가
-    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
-    response.headers.set('Pragma', 'no-cache')
-    response.headers.set('Expires', '0')
+    console.log('[API] GET /api/homepage-config - Config fetched from DB:', JSON.stringify(config, null, 2))
+    
+    // 응답 데이터 검증
+    if (!config || typeof config !== 'object' || !('title' in config) || !('description' in config)) {
+      console.error('[API] Invalid config format:', config)
+      throw new Error('Invalid config format received from database')
+    }
+    
+    const response = NextResponse.json(config, {
+      status: 200,
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, private',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Type': 'application/json; charset=utf-8',
+        'Last-Modified': new Date().toUTCString(),
+      },
+    })
+    
+    console.log('[API] GET /api/homepage-config - Response created:', JSON.stringify(config, null, 2))
+    console.log('[API] Response headers:', Object.fromEntries(response.headers.entries()))
     return response
   } catch (error) {
-    console.error('Failed to fetch homepage config:', error)
-    const errorResponse = NextResponse.json(
-      { error: 'Failed to fetch homepage config' },
-      { status: 500 }
-    )
-    errorResponse.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
+    console.error('[API] GET /api/homepage-config - Error:', error)
+    if (error instanceof Error) {
+      console.error('[API] Error message:', error.message)
+      console.error('[API] Error stack:', error.stack)
+    }
+    
+    // 에러 발생 시에도 기본값 반환 (500 에러 대신)
+    const defaultConfig = {
+      title: '퇴원환자 친절도 설문',
+      description: '환자 만족도 조사를 위한 설문 시스템입니다. 참여를 통해 더 나은 서비스를 만들어주세요.',
+    }
+    
+    console.log('[API] Returning default config due to error:', JSON.stringify(defaultConfig, null, 2))
+    
+    const errorResponse = NextResponse.json(defaultConfig, {
+      status: 200, // 에러가 있어도 200으로 반환하여 클라이언트가 기본값을 사용할 수 있도록
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'X-Error': 'true',
+      },
+    })
     return errorResponse
   }
 }

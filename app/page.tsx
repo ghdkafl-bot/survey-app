@@ -15,41 +15,113 @@ export default function Home() {
   const [adminId, setAdminId] = useState('')
   const [adminPw, setAdminPw] = useState('')
 
-  const fetchHomepageConfig = useCallback(async () => {
+  const fetchHomepageConfig = useCallback(async (force = false) => {
     try {
       // 캐시 무효화를 위해 timestamp 쿼리 파라미터 추가
       const timestamp = new Date().getTime()
-      const res = await fetch(`/api/homepage-config?t=${timestamp}`, { 
+      const url = `/api/homepage-config?t=${timestamp}${force ? '&_force=' + Math.random() : ''}`
+      
+      console.log('[Homepage] Fetching config from:', url)
+      
+      const res = await fetch(url, { 
+        method: 'GET',
         cache: 'no-store',
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Pragma': 'no-cache',
           'Expires': '0',
+          'X-Requested-With': 'XMLHttpRequest',
         },
+        credentials: 'same-origin',
       })
-      if (!res.ok) throw new Error('Failed to load homepage config')
+      
+      console.log('[Homepage] Response status:', res.status, res.statusText)
+      
+      if (!res.ok) {
+        const errorText = await res.text()
+        console.error('[Homepage] Response error:', errorText)
+        throw new Error(`Failed to load homepage config: ${res.status} ${res.statusText}`)
+      }
+      
       const data = await res.json()
-      console.log('Homepage config loaded:', data)
-      setHomepageConfig(data)
+      console.log('[Homepage] ✅ Config data received from API:', JSON.stringify(data, null, 2))
+      
+      // 데이터 검증 및 상태 업데이트
+      if (data && typeof data === 'object' && 'title' in data && 'description' in data) {
+        const newConfig: HomepageConfig = {
+          title: typeof data.title === 'string' && data.title.trim().length > 0
+            ? data.title.trim()
+            : DEFAULT_HOMEPAGE_CONFIG.title,
+          description: typeof data.description === 'string' && data.description.trim().length > 0
+            ? data.description.trim()
+            : DEFAULT_HOMEPAGE_CONFIG.description,
+        }
+        
+        console.log('[Homepage] ✅ Normalized config:', JSON.stringify(newConfig, null, 2))
+        
+        // 함수형 업데이트를 사용하여 항상 최신 상태로 업데이트
+        setHomepageConfig((prevConfig) => {
+          console.log('[Homepage] 🔄 State update function called')
+          console.log('[Homepage] Previous config:', JSON.stringify(prevConfig, null, 2))
+          console.log('[Homepage] New config:', JSON.stringify(newConfig, null, 2))
+          
+          // 항상 새 설정으로 업데이트
+          if (JSON.stringify(prevConfig) !== JSON.stringify(newConfig)) {
+            console.log('[Homepage] ✅ State will be updated - Config changed')
+            console.log('[Homepage] Title:', prevConfig.title, '->', newConfig.title)
+            console.log('[Homepage] Description:', prevConfig.description, '->', newConfig.description)
+          } else {
+            console.log('[Homepage] ⚠️ State unchanged - Config is the same')
+          }
+          
+          // 항상 새 설정 반환 (강제 업데이트)
+          return newConfig
+        })
+        
+        // 상태 업데이트 후 확인
+        setTimeout(() => {
+          console.log('[Homepage] ⏰ After state update - Config should be:', JSON.stringify(newConfig, null, 2))
+        }, 50)
+      } else {
+        console.warn('[Homepage] ❌ Invalid data format:', data)
+        console.warn('[Homepage] Data type:', typeof data)
+        if (data && typeof data === 'object') {
+          console.warn('[Homepage] Data keys:', Object.keys(data))
+          console.warn('[Homepage] Has title?', 'title' in data)
+          console.warn('[Homepage] Has description?', 'description' in data)
+        }
+      }
     } catch (error) {
-      console.error('Failed to fetch homepage config:', error)
-      setHomepageConfig(DEFAULT_HOMEPAGE_CONFIG)
+      console.error('[Homepage] ❌ Failed to fetch homepage config:', error)
+      if (error instanceof Error) {
+        console.error('[Homepage] Error message:', error.message)
+        console.error('[Homepage] Error stack:', error.stack)
+      }
+      // 에러가 발생해도 기본값으로 설정하지 않음 (이전 값 유지)
     }
   }, [])
 
   useEffect(() => {
     fetchSurveys()
-    fetchHomepageConfig()
+    fetchHomepageConfig(true) // 강제로 최신 데이터 가져오기
+
+    // 주기적으로 설정 다시 불러오기 (30초마다)
+    const interval = setInterval(() => {
+      console.log('[Homepage] Periodic refresh of config')
+      fetchHomepageConfig(true)
+    }, 30000)
 
     // 페이지 포커스 시 설정 다시 불러오기
     const handleFocus = () => {
-      fetchHomepageConfig()
+      console.log('[Homepage] Window focused, refreshing config')
+      fetchHomepageConfig(true)
     }
 
     // 페이지 가시성 변경 시 설정 다시 불러오기
     const handleVisibilityChange = () => {
       if (!document.hidden) {
-        fetchHomepageConfig()
+        console.log('[Homepage] Page visible, refreshing config')
+        fetchHomepageConfig(true)
       }
     }
 
@@ -57,6 +129,7 @@ export default function Home() {
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
+      clearInterval(interval)
       window.removeEventListener('focus', handleFocus)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
@@ -99,9 +172,11 @@ export default function Home() {
         <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-lg p-6 sm:p-8 space-y-6">
           <header className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-gray-800">{homepageConfig.title}</h1>
+              <h1 className="text-3xl sm:text-4xl font-bold text-gray-800">
+                {homepageConfig?.title || DEFAULT_HOMEPAGE_CONFIG.title}
+              </h1>
               <p className="text-sm sm:text-base text-gray-600 mt-2">
-                {homepageConfig.description}
+                {homepageConfig?.description || DEFAULT_HOMEPAGE_CONFIG.description}
               </p>
             </div>
           </header>

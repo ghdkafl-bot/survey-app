@@ -645,27 +645,45 @@ export const db = {
     const supabase = getSupabaseServiceClient()
     
     try {
+      console.log('[DB] getHomepageConfig - Querying database for id="default"')
+      
       const { data, error } = await supabase
         .from('homepage_config')
-        .select('title, description')
+        .select('id, title, description, updated_at')
         .eq('id', 'default')
         .maybeSingle()
 
+      console.log('[DB] getHomepageConfig - Query result:', { data, error })
+
       if (error) {
-        console.error('Error fetching homepage config:', error)
+        console.error('[DB] ❌ getHomepageConfig - Error:', error)
+        console.error('[DB] Error code:', error.code)
+        console.error('[DB] Error message:', error.message)
+        console.error('[DB] Error details:', error.details)
+        console.error('[DB] Error hint:', error.hint)
+        
         // 테이블이 없을 수 있으므로 기본값 반환
         if (error.code === 'PGRST116' || error.message?.includes('relation') || error.message?.includes('does not exist')) {
-          console.warn('homepage_config table does not exist, using default config')
+          console.warn('[DB] ⚠️ homepage_config table does not exist, using default config')
+          return { ...DEFAULT_HOMEPAGE_CONFIG }
         }
+        // 다른 에러도 기본값 반환 (에러를 throw하지 않음)
+        console.warn('[DB] ⚠️ Error occurred, returning default config')
         return { ...DEFAULT_HOMEPAGE_CONFIG }
       }
 
       if (!data) {
-        console.log('No homepage config found in database, using default')
+        console.log('[DB] ⚠️ No homepage config found in database (data is null), using default')
         return { ...DEFAULT_HOMEPAGE_CONFIG }
       }
 
-      return {
+      console.log('[DB] ✅ Raw data from DB:', JSON.stringify(data, null, 2))
+      console.log('[DB] Data type:', typeof data)
+      console.log('[DB] Data keys:', Object.keys(data))
+      console.log('[DB] Title from DB:', data.title, '(type:', typeof data.title, ')')
+      console.log('[DB] Description from DB:', data.description, '(type:', typeof data.description, ')')
+
+      const result: HomepageConfig = {
         title:
           typeof data.title === 'string' && data.title.trim().length > 0
             ? data.title.trim()
@@ -675,8 +693,18 @@ export const db = {
             ? data.description.trim()
             : DEFAULT_HOMEPAGE_CONFIG.description,
       }
+      
+      console.log('[DB] ✅ Normalized result:', JSON.stringify(result, null, 2))
+      console.log('[DB] Final title:', result.title)
+      console.log('[DB] Final description:', result.description)
+      return result
     } catch (error) {
-      console.error('Exception in getHomepageConfig:', error)
+      console.error('[DB] Exception in getHomepageConfig:', error)
+      if (error instanceof Error) {
+        console.error('[DB] Exception message:', error.message)
+        console.error('[DB] Exception stack:', error.stack)
+      }
+      // 에러가 발생하면 기본값 반환
       return { ...DEFAULT_HOMEPAGE_CONFIG }
     }
   },
