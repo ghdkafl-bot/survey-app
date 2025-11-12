@@ -1,12 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getSupabaseServiceClient } from '@/lib/supabaseClient'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    const surveys = await db.getAllSurveys()
-    return NextResponse.json(surveys)
+    const supabase = getSupabaseServiceClient()
+
+    const { data, error } = await supabase
+      .from('surveys')
+      .select(`
+        id,
+        title,
+        description,
+        background_color,
+        closing_message,
+        patient_info_config,
+        created_at,
+        question_groups (
+          id,
+          title,
+          order,
+          questions (
+            id,
+            text,
+            order,
+            type,
+            include_none_option,
+            sub_questions ( id, text, order )
+          )
+        )
+      `)
+      .order('created_at', { ascending: false })
+
+    if (error || !data) {
+      console.error('Failed to fetch surveys:', error)
+      return NextResponse.json([], { status: 200 })
+    }
+
+    const normalized = data
+      .map((record: any) => {
+        try {
+          return db.getSurvey(record.id)
+        } catch (err) {
+          console.error('Normalization error:', err)
+          return undefined
+        }
+      })
+
+    const resolved = await Promise.all(normalized)
+    const filtered = resolved.filter(
+      (survey): survey is NonNullable<typeof survey> =>
+        Boolean(survey && survey.questionGroups && survey.questionGroups.length > 0)
+    )
+
+    return NextResponse.json(filtered)
   } catch (error) {
     return NextResponse.json(
       { error: 'Failed to fetch surveys' },

@@ -163,37 +163,19 @@ const normalizeSurvey = (survey: any): Survey => {
   const rawGroups = Array.isArray(survey?.questionGroups) ? survey.questionGroups : []
   const questionGroups: QuestionGroup[] = rawGroups
     .filter((group: any) => !DEPRECATED_GROUP_IDS.includes(group?.id))
-    .sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0))
-    .map((group: any) => {
-      const questions: Question[] = (group.questions ?? [])
-        .filter((question: any) => !DEPRECATED_QUESTION_IDS.includes(question?.id))
-        .sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0))
-        .map((question: any) => ({
-          id: question.id,
-          groupId: group.id,
-          text: question.text,
-          order: question.order ?? 0,
-          type: question.type === 'text' ? 'text' : 'scale',
-          includeNoneOption: question.type === 'scale' ? Boolean(question.includeNoneOption) : undefined,
-          subQuestions: (question.sub_questions ?? [])
-            .sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0))
-            .map((sub: any) => ({
-              id: sub.id,
-              questionId: question.id,
-              text: sub.text,
-              order: sub.order ?? 0,
-            })),
-        }))
-
+    .map((group: any, groupIdx: number) => {
+      const groupId = group?.id || `${surveyId}-group-${groupIdx}`
+      const rawQuestions = Array.isArray(group?.questions) ? group.questions : []
       return {
-        id: group.id,
-        surveyId: surveyId,
-        title: group.title,
-        order: group.order ?? 0,
-        questions,
+        id: groupId,
+        surveyId,
+        title: typeof group?.title === 'string' ? group.title : '',
+        order: typeof group?.order === 'number' ? group.order : groupIdx,
+        questions: rawQuestions
+          .filter((q: any) => !DEPRECATED_QUESTION_IDS.includes(q?.id))
+          .map((q: any, qIdx: number) => normalizeQuestion(q, groupId, surveyId, qIdx)),
       }
     })
-
   return {
     id: surveyId,
     title: typeof survey?.title === 'string' ? survey.title : '',
