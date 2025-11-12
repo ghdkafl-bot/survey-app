@@ -99,6 +99,30 @@ const DEFAULT_CLOSING_MESSAGE: ClosingMessage = {
 const DEPRECATED_GROUP_IDS = ['__free_opinion_group']
 const DEPRECATED_QUESTION_IDS = ['__free_opinion_praise', '__free_opinion_improve']
 
+const normalizeQuestion = (question: any, groupId: string, fallbackIdPrefix: string, index: number): Question => {
+  const questionId = question?.id || `${fallbackIdPrefix}-q-${index}`
+  const type: QuestionType = question?.type === 'text' ? 'text' : 'scale'
+  const rawSubQuestions = Array.isArray(question?.subQuestions) ? question.subQuestions : []
+  const subQuestions: SubQuestion[] = rawSubQuestions
+    .slice(0, 5)
+    .map((sub: any, subIdx: number) => ({
+      id: sub?.id || `${questionId}-sub-${subIdx}`,
+      questionId,
+      text: typeof sub?.text === 'string' ? sub.text : '',
+      order: typeof sub?.order === 'number' ? sub.order : subIdx,
+    }))
+
+  return {
+    id: questionId,
+    groupId,
+    text: typeof question?.text === 'string' ? question.text : '',
+    order: typeof question?.order === 'number' ? question.order : index,
+    type,
+    subQuestions,
+    includeNoneOption: type === 'scale' ? Boolean(question?.includeNoneOption) : undefined,
+  }
+}
+
 const normalizeClosingMessage = (closingMessage: any): ClosingMessage => ({
   ...DEFAULT_CLOSING_MESSAGE,
   ...(typeof closingMessage === 'object' && closingMessage
