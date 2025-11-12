@@ -26,6 +26,11 @@ export interface PatientInfoQuestion {
   required?: boolean
 }
 
+export interface HomepageConfig {
+  title: string
+  description: string
+}
+
 export interface PatientInfoConfig {
   patientTypeLabel: string
   patientTypePlaceholder: string
@@ -94,6 +99,11 @@ export const DEFAULT_PATIENT_INFO_CONFIG: PatientInfoConfig = {
   patientNamePlaceholder: '환자성함을 입력하세요 (선택사항)',
   patientNameRequired: false,
   additionalQuestions: [],
+}
+
+export const DEFAULT_HOMEPAGE_CONFIG: HomepageConfig = {
+  title: '퇴원환자 친절도 설문',
+  description: '환자 만족도 조사를 위한 설문 시스템입니다. 참여를 통해 더 나은 서비스를 만들어주세요.',
 }
 
 const DEFAULT_CLOSING_MESSAGE: ClosingMessage = {
@@ -629,6 +639,63 @@ export const db = {
 
     if (error) throw error
     return true
+  },
+
+  getHomepageConfig: async (): Promise<HomepageConfig> => {
+    const supabase = getSupabaseServiceClient()
+    const { data, error } = await supabase
+      .from('homepage_config')
+      .select('title, description')
+      .eq('id', 'default')
+      .maybeSingle()
+
+    if (error || !data) {
+      return { ...DEFAULT_HOMEPAGE_CONFIG }
+    }
+
+    return {
+      title:
+        typeof data.title === 'string' && data.title.trim().length > 0
+          ? data.title.trim()
+          : DEFAULT_HOMEPAGE_CONFIG.title,
+      description:
+        typeof data.description === 'string' && data.description.trim().length > 0
+          ? data.description.trim()
+          : DEFAULT_HOMEPAGE_CONFIG.description,
+    }
+  },
+
+  updateHomepageConfig: async (config: HomepageConfig): Promise<HomepageConfig> => {
+    const supabase = getSupabaseServiceClient()
+    const title = typeof config.title === 'string' && config.title.trim().length > 0
+      ? config.title.trim()
+      : DEFAULT_HOMEPAGE_CONFIG.title
+    const description = typeof config.description === 'string' && config.description.trim().length > 0
+      ? config.description.trim()
+      : DEFAULT_HOMEPAGE_CONFIG.description
+
+    const { data, error: upsertError } = await supabase
+      .from('homepage_config')
+      .upsert(
+        {
+          id: 'default',
+          title,
+          description,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'id',
+        }
+      )
+      .select('title, description')
+      .single()
+
+    if (upsertError) throw upsertError
+
+    return {
+      title: data.title,
+      description: data.description,
+    }
   },
 }
 

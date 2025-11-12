@@ -9,7 +9,9 @@ import {
   ClosingMessage,
   PatientInfoConfig,
   PatientInfoQuestion,
+  HomepageConfig,
   DEFAULT_PATIENT_INFO_CONFIG,
+  DEFAULT_HOMEPAGE_CONFIG,
 } from '@/lib/db'
 
 const ADMIN_ID = 'guamct'
@@ -77,6 +79,7 @@ export default function AdminPage() {
   const [questionGroups, setQuestionGroups] = useState<QuestionGroupInput[]>([defaultGroup()])
   const [closingMessage, setClosingMessage] = useState<ClosingMessage>(DEFAULT_CLOSING_MESSAGE)
   const [patientInfoConfig, setPatientInfoConfig] = useState<PatientInfoConfig>(createDefaultPatientInfoConfig())
+  const [homepageConfig, setHomepageConfig] = useState<HomepageConfig>(DEFAULT_HOMEPAGE_CONFIG)
   const [loading, setLoading] = useState(false)
   const [exportRanges, setExportRanges] = useState<Record<string, { from: string; to: string }>>({})
   const [purgeRanges, setPurgeRanges] = useState<Record<string, { from: string; to: string }>>({})
@@ -86,8 +89,21 @@ export default function AdminPage() {
     if (authenticated === 'true') {
       setIsAuthenticated(true)
       fetchSurveys()
+      fetchHomepageConfig()
     }
   }, [])
+
+  const fetchHomepageConfig = async () => {
+    try {
+      const res = await fetch('/api/homepage-config', { cache: 'no-store' })
+      if (!res.ok) throw new Error('Failed to load homepage config')
+      const data = await res.json()
+      setHomepageConfig(data)
+    } catch (error) {
+      console.error('Failed to fetch homepage config:', error)
+      setHomepageConfig(DEFAULT_HOMEPAGE_CONFIG)
+    }
+  }
 
   const fetchSurveys = async () => {
     try {
@@ -1264,6 +1280,60 @@ export default function AdminPage() {
               </button>
             </form>
           )}
+
+          <section className="mb-10 space-y-4 border border-gray-200 rounded-xl bg-white p-6">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">홈페이지 설정</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">홈페이지 제목 *</label>
+                <input
+                  value={homepageConfig.title}
+                  onChange={(e) => setHomepageConfig((prev) => ({ ...prev, title: e.target.value }))}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="예: 퇴원환자 친절도 설문"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">홈페이지 설명 *</label>
+                <textarea
+                  value={homepageConfig.description}
+                  onChange={(e) => setHomepageConfig((prev) => ({ ...prev, description: e.target.value }))}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  rows={3}
+                  placeholder="예: 환자 만족도 조사를 위한 설문 시스템입니다. 참여를 통해 더 나은 서비스를 만들어주세요."
+                  required
+                />
+              </div>
+              <button
+                onClick={async () => {
+                  if (!homepageConfig.title.trim() || !homepageConfig.description.trim()) {
+                    alert('제목과 설명을 모두 입력해주세요.')
+                    return
+                  }
+                  try {
+                    const res = await fetch('/api/homepage-config', {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        title: homepageConfig.title.trim(),
+                        description: homepageConfig.description.trim(),
+                      }),
+                    })
+                    if (!res.ok) throw new Error('Failed to update homepage config')
+                    alert('홈페이지 설정이 저장되었습니다.')
+                    await fetchHomepageConfig()
+                  } catch (error) {
+                    console.error('Failed to update homepage config:', error)
+                    alert('홈페이지 설정 저장에 실패했습니다.')
+                  }
+                }}
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-semibold transition-colors"
+              >
+                홈페이지 설정 저장
+              </button>
+            </div>
+          </section>
 
           <div>
             <h2 className="text-2xl font-bold text-gray-800 mb-4">생성된 설문 목록</h2>

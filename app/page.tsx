@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Survey } from '@/lib/db'
+import { Survey, HomepageConfig, DEFAULT_HOMEPAGE_CONFIG } from '@/lib/db'
 
 const ADMIN_ID = 'guamct'
 const ADMIN_PW = 'Hosp7533!!'
@@ -10,13 +10,27 @@ const DEFAULT_BACKGROUND = '#f0f9ff'
 
 export default function Home() {
   const [surveys, setSurveys] = useState<Survey[]>([])
+  const [homepageConfig, setHomepageConfig] = useState<HomepageConfig>(DEFAULT_HOMEPAGE_CONFIG)
   const [showAdminLogin, setShowAdminLogin] = useState(false)
   const [adminId, setAdminId] = useState('')
   const [adminPw, setAdminPw] = useState('')
 
   useEffect(() => {
     fetchSurveys()
+    fetchHomepageConfig()
   }, [])
+
+  const fetchHomepageConfig = async () => {
+    try {
+      const res = await fetch('/api/homepage-config', { cache: 'no-store' })
+      if (!res.ok) throw new Error('Failed to load homepage config')
+      const data = await res.json()
+      setHomepageConfig(data)
+    } catch (error) {
+      console.error('Failed to fetch homepage config:', error)
+      setHomepageConfig(DEFAULT_HOMEPAGE_CONFIG)
+    }
+  }
 
   const fetchSurveys = async () => {
     try {
@@ -55,9 +69,9 @@ export default function Home() {
         <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-lg p-6 sm:p-8 space-y-6">
           <header className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-gray-800">퇴원환자 친절도 설문</h1>
+              <h1 className="text-3xl sm:text-4xl font-bold text-gray-800">{homepageConfig.title}</h1>
               <p className="text-sm sm:text-base text-gray-600 mt-2">
-                환자 만족도 조사를 위한 설문 시스템입니다. 참여를 통해 더 나은 서비스를 만들어주세요.
+                {homepageConfig.description}
               </p>
             </div>
           </header>

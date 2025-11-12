@@ -120,13 +120,32 @@ create table answers (
   value integer,
   text_value text
 );
+
+create table homepage_config (
+  id text primary key default 'default',
+  title text not null,
+  description text not null,
+  updated_at timestamptz not null default now()
+);
 ```
 
-이미 테이블을 만든 상태라면 다음 명령으로 필요한 컬럼을 추가하세요.
+이미 테이블을 만든 상태라면 다음 명령으로 필요한 컬럼과 테이블을 추가하세요.
 
 ```sql
 alter table surveys add column if not exists patient_info_config jsonb;
 alter table responses add column if not exists patient_info_answers jsonb;
+
+create table if not exists homepage_config (
+  id text primary key default 'default',
+  title text not null,
+  description text not null,
+  updated_at timestamptz not null default now()
+);
+
+-- 기본값 삽입 (테이블이 비어있을 경우)
+insert into homepage_config (id, title, description)
+values ('default', '퇴원환자 친절도 설문', '환자 만족도 조사를 위한 설문 시스템입니다. 참여를 통해 더 나은 서비스를 만들어주세요.')
+on conflict (id) do nothing;
 ```
 
 3. 필요하다면 Row Level Security(RLS)를 비활성화하거나 정책을 추가합니다. (기본 상태는 비활성화)
