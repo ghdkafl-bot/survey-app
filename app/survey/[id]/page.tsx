@@ -257,12 +257,10 @@ export default function SurveyPage() {
                   <select
                     value={patientType}
                     onChange={(e) => setPatientType(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
                     required={patientInfoConfig.patientTypeRequired}
                     style={{
-                      color: patientType
-                        ? patientInfoConfig.patientTypeTextColor || '#111827'
-                        : '#9ca3af',
+                      color: patientType ? '#111827' : '#9ca3af',
                     }}
                   >
                     <option value="">{patientInfoConfig.patientTypePlaceholder}</option>
@@ -281,7 +279,7 @@ export default function SurveyPage() {
                   <input
                     value={patientName}
                     onChange={(e) => setPatientName(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
                     placeholder={patientInfoConfig.patientNamePlaceholder}
                     required={patientInfoConfig.patientNameRequired}
                   />
@@ -395,7 +393,7 @@ export default function SurveyPage() {
                           <textarea
                             value={typeof value === 'string' ? value : ''}
                             onChange={(e) => handleTextAnswer(question.id, e.target.value)}
-                            className="w-full mt-2 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full mt-2 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
                             rows={4}
                             placeholder="자유롭게 의견을 작성해주세요."
                             required
