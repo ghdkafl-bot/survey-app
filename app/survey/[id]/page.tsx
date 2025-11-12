@@ -79,10 +79,10 @@ export default function SurveyPage() {
           } else {
             if (question.subQuestions.length > 0) {
               question.subQuestions.forEach((sub) => {
-                initialAnswers[makeKey(question.id, sub.id)] = question.includeNoneOption ? null : undefined
+                initialAnswers[makeKey(question.id, sub.id)] = undefined
               })
             } else {
-              initialAnswers[makeKey(question.id)] = question.includeNoneOption ? null : undefined
+              initialAnswers[makeKey(question.id)] = undefined
             }
           }
         })
@@ -93,7 +93,7 @@ export default function SurveyPage() {
       setPatientName('')
     } catch (error) {
       console.error('Failed to fetch survey:', error)
-      alert('설문을 불러오지 못했습니다.')
+      window.alert('설문을 불러오지 못했습니다.')
     }
   }
 
@@ -111,33 +111,7 @@ export default function SurveyPage() {
     }))
   }
 
-  const validateAnswers = (questions: Question[]): boolean => {
-    for (const question of questions) {
-      if (question.type === 'text') {
-        const key = makeKey(question.id)
-        const value = answers[key]
-        if (typeof value !== 'string' || !value.trim()) {
-          return false
-        }
-      } else {
-        const allowNone = question.includeNoneOption
-        if (question.subQuestions.length > 0) {
-          for (const sub of question.subQuestions) {
-            const key = makeKey(question.id, sub.id)
-            const value = answers[key]
-            if (!allowNone && typeof value !== 'number') {
-              return false
-            }
-          }
-        } else {
-          const key = makeKey(question.id)
-          const value = answers[key]
-          if (!allowNone && typeof value !== 'number') {
-            return false
-          }
-        }
-      }
-    }
+  const validateAnswers = (_questions: Question[]): boolean => {
     return true
   }
 
@@ -156,6 +130,7 @@ export default function SurveyPage() {
     const trimmedPatientName = patientName.trim()
     if (patientInfoConfig.patientNameRequired && !trimmedPatientName) {
       window.alert(`${patientInfoConfig.patientNameLabel}을(를) 입력해주세요.`)
+      patientInfoSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
     }
 
@@ -163,7 +138,7 @@ export default function SurveyPage() {
 
     const allQuestionsValid = survey.questionGroups.every((group) => validateAnswers(group.questions))
     if (!allQuestionsValid) {
-      alert('모든 문항에 답변해주세요.')
+      window.alert('모든 문항에 답변해주세요.')
       return
     }
 
@@ -254,7 +229,6 @@ export default function SurveyPage() {
                     value={patientType}
                     onChange={(e) => setPatientType(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
-                    required={patientInfoConfig.patientTypeRequired}
                     style={{
                       color: patientType ? '#111827' : '#9ca3af',
                     }}
@@ -277,7 +251,6 @@ export default function SurveyPage() {
                     onChange={(e) => setPatientName(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
                     placeholder={patientInfoConfig.patientNamePlaceholder}
-                    required={patientInfoConfig.patientNameRequired}
                   />
                 </div>
               </div>
@@ -444,4 +417,5 @@ export default function SurveyPage() {
     </main>
   )
 }
+
 
