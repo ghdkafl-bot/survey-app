@@ -352,6 +352,10 @@ export default function SurveyPage() {
                                     {[1, 2, 3, 4, 5].map((value) => (
                                       <label
                                         key={value}
+                                        onClick={(e) => {
+                                          e.preventDefault()
+                                          handleScaleAnswer(question.id, value, sub.id, question.includeNoneOption)
+                                        }}
                                         className={`flex-1 basis-[30%] sm:basis-auto min-w-[70px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${selectedValue === value ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
                                       >
                                         <input
@@ -359,7 +363,8 @@ export default function SurveyPage() {
                                           name={key}
                                           value={value}
                                           checked={selectedValue === value}
-                                          onChange={() => handleScaleAnswer(question.id, value, sub.id, question.includeNoneOption)}
+                                          onChange={() => {}}
+                                          onClick={(e) => e.preventDefault()}
                                           className="sr-only"
                                         />
                                         <span className="text-sm font-medium">{value}점</span>
@@ -367,6 +372,10 @@ export default function SurveyPage() {
                                     ))}
                                     {question.includeNoneOption && (
                                       <label
+                                        onClick={(e) => {
+                                          e.preventDefault()
+                                          handleScaleAnswer(question.id, null, sub.id, true)
+                                        }}
                                         className={`flex-1 basis-[30%] sm:basis-auto min-w-[70px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${selectedValue === null ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
                                       >
                                         <input
@@ -374,7 +383,8 @@ export default function SurveyPage() {
                                           name={key}
                                           value=""
                                           checked={selectedValue === null}
-                                          onChange={() => handleScaleAnswer(question.id, null, sub.id, true)}
+                                          onChange={() => {}}
+                                          onClick={(e) => e.preventDefault()}
                                           className="sr-only"
                                         />
                                         <span className="text-sm font-medium whitespace-nowrap">해당없음</span>
@@ -393,6 +403,10 @@ export default function SurveyPage() {
                                   return (
                                     <label
                                       key={value}
+                                      onClick={(e) => {
+                                        e.preventDefault()
+                                        handleScaleAnswer(question.id, value, undefined, question.includeNoneOption)
+                                      }}
                                       className={`flex-1 basis-[30%] sm:basis-auto min-w-[70px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${selectedValue === value ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
                                     >
                                       <input
@@ -400,7 +414,8 @@ export default function SurveyPage() {
                                         name={key}
                                         value={value}
                                         checked={selectedValue === value}
-                                        onChange={() => handleScaleAnswer(question.id, value, undefined, question.includeNoneOption)}
+                                        onChange={() => {}}
+                                        onClick={(e) => e.preventDefault()}
                                         className="sr-only"
                                       />
                                       <span className="text-sm font-medium">{value}점</span>
@@ -409,6 +424,10 @@ export default function SurveyPage() {
                                 })}
                                 {question.includeNoneOption && (
                                   <label
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      handleScaleAnswer(question.id, null, undefined, true)
+                                    }}
                                     className={`flex-1 basis-[30%] sm:basis-auto min-w-[70px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${answers[makeKey(question.id)] === null ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
                                   >
                                     <input
@@ -416,7 +435,8 @@ export default function SurveyPage() {
                                       name={makeKey(question.id)}
                                       value=""
                                       checked={answers[makeKey(question.id)] === null}
-                                      onChange={() => handleScaleAnswer(question.id, null, undefined, true)}
+                                      onChange={() => {}}
+                                      onClick={(e) => e.preventDefault()}
                                       className="sr-only"
                                     />
                                     <span className="text-sm font-medium whitespace-nowrap">해당없음</span>
