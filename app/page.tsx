@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { Survey, HomepageConfig, DEFAULT_HOMEPAGE_CONFIG } from '@/lib/db'
 
@@ -15,22 +15,52 @@ export default function Home() {
   const [adminId, setAdminId] = useState('')
   const [adminPw, setAdminPw] = useState('')
 
-  useEffect(() => {
-    fetchSurveys()
-    fetchHomepageConfig()
-  }, [])
-
-  const fetchHomepageConfig = async () => {
+  const fetchHomepageConfig = useCallback(async () => {
     try {
-      const res = await fetch('/api/homepage-config', { cache: 'no-store' })
+      // 캐시 무효화를 위해 timestamp 쿼리 파라미터 추가
+      const timestamp = new Date().getTime()
+      const res = await fetch(`/api/homepage-config?t=${timestamp}`, { 
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      })
       if (!res.ok) throw new Error('Failed to load homepage config')
       const data = await res.json()
+      console.log('Homepage config loaded:', data)
       setHomepageConfig(data)
     } catch (error) {
       console.error('Failed to fetch homepage config:', error)
       setHomepageConfig(DEFAULT_HOMEPAGE_CONFIG)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    fetchSurveys()
+    fetchHomepageConfig()
+
+    // 페이지 포커스 시 설정 다시 불러오기
+    const handleFocus = () => {
+      fetchHomepageConfig()
+    }
+
+    // 페이지 가시성 변경 시 설정 다시 불러오기
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchHomepageConfig()
+      }
+    }
+
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [fetchHomepageConfig])
 
   const fetchSurveys = async () => {
     try {
