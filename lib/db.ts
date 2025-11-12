@@ -276,7 +276,11 @@ export const db = {
           order,
           questions (
             id,
-            order
+            text,
+            order,
+            type,
+            include_none_option,
+            sub_questions ( id, text, order )
           )
         )
       `)
