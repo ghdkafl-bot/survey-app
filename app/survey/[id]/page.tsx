@@ -27,7 +27,7 @@ export default function SurveyPage() {
   const router = useRouter()
 
   const [survey, setSurvey] = useState<Survey | null>(null)
-  const [answers, setAnswers] = useState<Record<string, number | string | null>>({})
+  const [answers, setAnswers] = useState<Record<string, number | string | null | undefined>>({})
   const [patientName, setPatientName] = useState('')
   const [patientType, setPatientType] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -69,7 +69,7 @@ export default function SurveyPage() {
       const res = await fetch(`/api/surveys/${id}`, { cache: 'no-store' })
       if (!res.ok) throw new Error('Failed to fetch survey')
       const data: Survey = await res.json()
-      const initialAnswers: Record<string, number | string | null> = {}
+      const initialAnswers: Record<string, number | string | null | undefined> = {}
       data.questionGroups.forEach((group) => {
         group.questions.forEach((question) => {
           if (question.type === 'text') {
@@ -77,10 +77,10 @@ export default function SurveyPage() {
           } else {
             if (question.subQuestions.length > 0) {
               question.subQuestions.forEach((sub) => {
-                initialAnswers[makeKey(question.id, sub.id)] = null
+                initialAnswers[makeKey(question.id, sub.id)] = undefined
               })
             } else {
-              initialAnswers[makeKey(question.id)] = null
+              initialAnswers[makeKey(question.id)] = undefined
             }
           }
         })
@@ -310,7 +310,7 @@ export default function SurveyPage() {
                                     {[1, 2, 3, 4, 5].map((value) => (
                                       <label
                                         key={value}
-                                        className={`flex-1 sm:flex-none min-w-[56px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${selectedValue === value ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
+                                        className={`flex-1 basis-[30%] sm:basis-auto min-w-[70px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${selectedValue === value ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
                                       >
                                         <input
                                           type="radio"
@@ -325,7 +325,7 @@ export default function SurveyPage() {
                                     ))}
                                     {question.includeNoneOption && (
                                       <label
-                                        className={`flex-1 sm:flex-none min-w-[72px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${selectedValue === null ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
+                                        className={`flex-1 basis-[30%] sm:basis-auto min-w-[70px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${selectedValue === null ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
                                       >
                                         <input
                                           type="radio"
@@ -351,7 +351,7 @@ export default function SurveyPage() {
                                   return (
                                     <label
                                       key={value}
-                                      className={`flex-1 sm:flex-none min-w-[56px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${selectedValue === value ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
+                                      className={`flex-1 basis-[30%] sm:basis-auto min-w-[70px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${selectedValue === value ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
                                     >
                                       <input
                                         type="radio"
@@ -367,7 +367,7 @@ export default function SurveyPage() {
                                 })}
                                 {question.includeNoneOption && (
                                   <label
-                                    className={`flex-1 sm:flex-none min-w-[72px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${answers[makeKey(question.id)] === null ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
+                                    className={`flex-1 basis-[30%] sm:basis-auto min-w-[70px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${answers[makeKey(question.id)] === null ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
                                   >
                                     <input
                                       type="radio"
