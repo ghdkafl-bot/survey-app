@@ -88,6 +88,9 @@ export interface Answer {
   subQuestionId?: string
   value?: number | null
   textValue?: string | null
+  questionText?: string
+  subQuestionText?: string
+  groupTitle?: string
 }
 
 export const DEFAULT_PATIENT_INFO_CONFIG: PatientInfoConfig = {
@@ -546,19 +549,84 @@ export const db = {
     if (error) throw error
 
     if (response.answers.length > 0) {
-      const answerPayload = response.answers.map((answer) => ({
-        response_id: insertedResponse.id,
-        question_id: answer.questionId,
-        sub_question_id: answer.subQuestionId ?? null,
-        value: typeof answer.value === 'number' ? answer.value : null,
-        text_value: typeof answer.textValue === 'string' ? answer.textValue : null,
-      }))
+      // 질문 정보를 함께 저장하기 위해 현재 설문 정보 조회
+      const survey = await db.getSurvey(response.surveyId)
+      
+      // 질문 ID와 그룹 제목, 질문 텍스트 매핑 생성
+      const questionInfoMap = new Map<string, { text: string; groupTitle: string; type: string }>()
+      const subQuestionInfoMap = new Map<string, { text: string }>()
+      
+      if (survey) {
+        survey.questionGroups.forEach((group) => {
+          group.questions.forEach((question) => {
+            questionInfoMap.set(question.id, {
+              text: question.text,
+              groupTitle: group.title,
+              type: question.type,
+            })
+            question.subQuestions.forEach((sub) => {
+              subQuestionInfoMap.set(sub.id, {
+                text: sub.text,
+              })
+            })
+          })
+        })
+      }
+      
+      const answerPayload = response.answers.map((answer) => {
+        const questionInfo = questionInfoMap.get(answer.questionId)
+        const subQuestionInfo = answer.subQuestionId 
+          ? subQuestionInfoMap.get(answer.subQuestionId)
+          : null
+        
+        return {
+          response_id: insertedResponse.id,
+          question_id: answer.questionId,
+          sub_question_id: answer.subQuestionId ?? null,
+          value: typeof answer.value === 'number' ? answer.value : null,
+          text_value: typeof answer.textValue === 'string' ? answer.textValue : null,
+          // 질문 정보를 JSONB 컬럼에 저장 (추후 스키마 변경 필요 시 사용)
+          // 현재는 question_id로만 저장하고, Excel 다운로드 시 질문 정보를 조회
+        }
+      })
 
       const { error: answerError } = await supabase
         .from('answers')
         .insert(answerPayload)
 
       if (answerError) throw answerError
+      
+      // 답변과 함께 질문 정보를 responses 테이블에 저장
+      // 설문 제출 시점의 질문 정보를 JSONB로 저장
+      if (survey) {
+        const questionSnapshot = survey.questionGroups.map((group) => ({
+          id: group.id,
+          title: group.title,
+          order: group.order,
+          questions: group.questions.map((q) => ({
+            id: q.id,
+            text: q.text,
+            type: q.type,
+            order: q.order,
+            subQuestions: q.subQuestions.map((sub) => ({
+              id: sub.id,
+              text: sub.text,
+              order: sub.order,
+            })),
+          })),
+        }))
+        
+        // responses 테이블에 question_snapshot 컬럼 업데이트 (컬럼이 없어도 오류 무시)
+        try {
+          await supabase
+            .from('responses')
+            .update({ question_snapshot: questionSnapshot })
+            .eq('id', insertedResponse.id)
+        } catch (updateError) {
+          // question_snapshot 컬럼이 없을 수 있으므로 오류 무시
+          console.warn('[DB] Failed to update question_snapshot (column may not exist):', updateError)
+        }
+      }
     }
 
     return mapResponseRecord({
@@ -583,7 +651,7 @@ export const db = {
     const { data, error } = await supabase
       .from('responses')
       .select(
-        'id, survey_id, patient_name, patient_type, patient_info_answers, submitted_at, answers (id, question_id, sub_question_id, value, text_value)'
+        'id, survey_id, patient_name, patient_type, patient_info_answers, submitted_at, question_snapshot, answers (id, question_id, sub_question_id, value, text_value)'
       )
       .eq('survey_id', surveyId)
       .order('submitted_at', { ascending: true })

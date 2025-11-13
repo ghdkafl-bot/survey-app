@@ -69,6 +69,23 @@ export async function GET(request: NextRequest) {
     const allResponses = await db.getResponsesBySurvey(surveyId)
     console.log(`[Export] Total responses fetched: ${allResponses.length}`)
     
+    // responses 테이블에서 question_snapshot도 함께 조회
+    const supabase = getSupabaseServiceClient()
+    const { data: responsesWithSnapshot, error: snapshotError } = await supabase
+      .from('responses')
+      .select('id, question_snapshot')
+      .eq('survey_id', surveyId)
+    
+    const questionSnapshotMap = new Map<string, any>()
+    if (!snapshotError && responsesWithSnapshot) {
+      responsesWithSnapshot.forEach((r: any) => {
+        if (r.question_snapshot) {
+          questionSnapshotMap.set(r.id, r.question_snapshot)
+        }
+      })
+      console.log(`[Export] Loaded question snapshots for ${questionSnapshotMap.size} responses`)
+    }
+    
     if (allResponses.length > 0) {
       console.log(`[Export] Sample response:`, {
         id: allResponses[0].id,
@@ -76,6 +93,7 @@ export async function GET(request: NextRequest) {
         answersCount: allResponses[0].answers?.length || 0,
         patientName: allResponses[0].patientName,
         patientType: allResponses[0].patientType,
+        hasSnapshot: questionSnapshotMap.has(allResponses[0].id),
       })
     }
     
@@ -130,6 +148,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 데이터베이스에서 답변의 질문 ID로 직접 질문 정보 조회
+    // survey_id 필터를 제거하여 설문이 수정되어도 기존 질문 정보를 찾을 수 있도록 함
     const questionIdToQuestionMap = new Map<string, {
       text: string;
       type: string;
@@ -140,8 +159,8 @@ export async function GET(request: NextRequest) {
     
     if (allAnswerQuestionIds.size > 0) {
       try {
-        const supabase = getSupabaseServiceClient()
-        const { data: questionsData, error: questionsError } = await supabase
+        // 먼저 현재 설문의 질문 정보를 조회 (현재 설문 구조)
+        const { data: currentQuestionsData, error: currentQuestionsError } = await supabase
           .from('questions')
           .select(`
             id,
@@ -162,8 +181,8 @@ export async function GET(request: NextRequest) {
           .in('id', Array.from(allAnswerQuestionIds))
           .eq('question_groups.survey_id', surveyId)
         
-        if (!questionsError && questionsData) {
-          questionsData.forEach((q: any) => {
+        if (!currentQuestionsError && currentQuestionsData) {
+          currentQuestionsData.forEach((q: any) => {
             const group = Array.isArray(q.question_groups) ? q.question_groups[0] : q.question_groups
             const subQuestionsMap = new Map<string, { text: string; order: number }>()
             
@@ -182,10 +201,103 @@ export async function GET(request: NextRequest) {
             })
           })
           
-          console.log(`[Export] Loaded ${questionIdToQuestionMap.size} questions from database`)
-        } else {
-          console.warn(`[Export] Failed to load questions from database:`, questionsError)
+          console.log(`[Export] Loaded ${questionIdToQuestionMap.size} questions from current survey`)
         }
+        
+        // 현재 설문에서 찾지 못한 질문 ID들
+        const missingQuestionIds = Array.from(allAnswerQuestionIds).filter(
+          (id) => !questionIdToQuestionMap.has(id)
+        )
+        
+        if (missingQuestionIds.length > 0) {
+          console.log(`[Export] Trying to find ${missingQuestionIds.length} missing questions from question snapshots`)
+          
+          // 응답의 question_snapshot에서 질문 정보 찾기
+          responses.forEach((response) => {
+            const snapshot = questionSnapshotMap.get(response.id)
+            if (snapshot && Array.isArray(snapshot)) {
+              snapshot.forEach((group: any) => {
+                if (Array.isArray(group.questions)) {
+                  group.questions.forEach((q: any) => {
+                    if (missingQuestionIds.includes(q.id) && !questionIdToQuestionMap.has(q.id)) {
+                      const subQuestionsMap = new Map<string, { text: string; order: number }>()
+                      if (Array.isArray(q.subQuestions)) {
+                        q.subQuestions.forEach((sub: any) => {
+                          subQuestionsMap.set(sub.id, { text: sub.text, order: sub.order || 0 })
+                        })
+                      }
+                      
+                      questionIdToQuestionMap.set(q.id, {
+                        text: q.text,
+                        type: q.type,
+                        groupTitle: group.title || '',
+                        order: (group.order || 0) * 1000 + (q.order || 0),
+                        subQuestions: subQuestionsMap,
+                      })
+                    }
+                  })
+                }
+              })
+            }
+          })
+          
+          // 여전히 찾지 못한 질문 ID들
+          const stillMissingQuestionIds = Array.from(allAnswerQuestionIds).filter(
+            (id) => !questionIdToQuestionMap.has(id)
+          )
+          
+          if (stillMissingQuestionIds.length > 0) {
+            console.log(`[Export] Trying to find ${stillMissingQuestionIds.length} missing questions from all surveys`)
+            
+            // survey_id 필터 없이 질문 정보 조회 (설문이 수정되어 삭제된 질문도 찾기)
+            const { data: allQuestionsData, error: allQuestionsError } = await supabase
+              .from('questions')
+              .select(`
+                id,
+                text,
+                type,
+                "order",
+                question_groups!inner (
+                  title,
+                  "order",
+                  survey_id
+                ),
+                sub_questions (
+                  id,
+                  text,
+                  "order"
+                )
+              `)
+              .in('id', stillMissingQuestionIds)
+          
+            if (!allQuestionsError && allQuestionsData) {
+              allQuestionsData.forEach((q: any) => {
+                const group = Array.isArray(q.question_groups) ? q.question_groups[0] : q.question_groups
+                const subQuestionsMap = new Map<string, { text: string; order: number }>()
+                
+                if (Array.isArray(q.sub_questions)) {
+                  q.sub_questions.forEach((sub: any) => {
+                    subQuestionsMap.set(sub.id, { text: sub.text, order: sub.order || 0 })
+                  })
+                }
+                
+                questionIdToQuestionMap.set(q.id, {
+                  text: q.text,
+                  type: q.type,
+                  groupTitle: group?.title || '',
+                  order: (group?.order || 0) * 1000 + (q.order || 0),
+                  subQuestions: subQuestionsMap,
+                })
+              })
+              
+              console.log(`[Export] Loaded ${allQuestionsData.length} additional questions from all surveys`)
+            } else {
+              console.warn(`[Export] Failed to load questions from all surveys:`, allQuestionsError)
+            }
+          }
+        }
+        
+        console.log(`[Export] Total loaded questions: ${questionIdToQuestionMap.size} out of ${allAnswerQuestionIds.size}`)
       } catch (error) {
         console.error(`[Export] Error loading questions:`, error)
       }

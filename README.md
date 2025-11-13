@@ -110,6 +110,7 @@ create table responses (
   patient_name text,
   patient_type text,
   patient_info_answers jsonb,
+  question_snapshot jsonb,
   submitted_at timestamptz not null default now()
 );
 
@@ -135,6 +136,7 @@ create table homepage_config (
 ```sql
 alter table surveys add column if not exists patient_info_config jsonb;
 alter table responses add column if not exists patient_info_answers jsonb;
+alter table responses add column if not exists question_snapshot jsonb;
 alter table questions add column if not exists required boolean default false;
 
 create table if not exists homepage_config (
