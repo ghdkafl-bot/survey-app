@@ -303,7 +303,8 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    // 답변 데이터에서 실제로 사용된 모든 질문/하위질문 조합 수집
+    // 현재 설문 구조를 기준으로 Excel 헤더 생성
+    // 설문 구조와 답변 데이터를 모두 고려하여 descriptor 생성
     const answerKeyToDescriptor = new Map<string, { 
       questionId: string; 
       subQuestionId?: string; 
@@ -314,7 +315,48 @@ export async function GET(request: NextRequest) {
       order: number;
     }>()
     
-    // 실제 답변 데이터를 기준으로 descriptor 생성
+    // 1단계: 현재 설문 구조를 기준으로 descriptor 생성 (설문이 수정되지 않은 경우)
+    survey.questionGroups.forEach((group, groupIdx) => {
+      group.questions.forEach((question, questionIdx) => {
+        if (question.type === 'text') {
+          const key = `${question.id}`
+          answerKeyToDescriptor.set(key, {
+            questionId: question.id,
+            questionText: question.text,
+            groupTitle: group.title,
+            isText: true,
+            order: groupIdx * 1000 + questionIdx * 10,
+          })
+        } else {
+          if (question.subQuestions.length > 0) {
+            question.subQuestions.forEach((sub, subIdx) => {
+              const key = `${question.id}:${sub.id}`
+              answerKeyToDescriptor.set(key, {
+                questionId: question.id,
+                subQuestionId: sub.id,
+                questionText: question.text,
+                subQuestionText: sub.text,
+                groupTitle: group.title,
+                isText: false,
+                order: groupIdx * 1000 + questionIdx * 10 + subIdx,
+              })
+            })
+          } else {
+            const key = `${question.id}`
+            answerKeyToDescriptor.set(key, {
+              questionId: question.id,
+              questionText: question.text,
+              groupTitle: group.title,
+              isText: false,
+              order: groupIdx * 1000 + questionIdx * 10,
+            })
+          }
+        }
+      })
+    })
+    
+    // 2단계: 답변 데이터에 있는 질문 중 설문 구조에 없는 질문 추가
+    // question_snapshot 또는 데이터베이스에서 질문 정보 조회
     responses.forEach((response) => {
       response.answers?.forEach((answer) => {
         const key = answer.subQuestionId 
@@ -322,34 +364,79 @@ export async function GET(request: NextRequest) {
           : `${answer.questionId}`
         
         if (!answerKeyToDescriptor.has(key)) {
-          const questionInfo = questionIdToQuestionMap.get(answer.questionId)
+          // 먼저 question_snapshot에서 찾기
+          const snapshot = questionSnapshotMap.get(response.id)
+          let foundInSnapshot = false
           
-          if (questionInfo) {
-            // 데이터베이스에서 질문 정보를 찾은 경우
-            const subQuestionInfo = answer.subQuestionId 
-              ? questionInfo.subQuestions.get(answer.subQuestionId)
-              : null
-              
-            answerKeyToDescriptor.set(key, {
-              questionId: answer.questionId,
-              subQuestionId: answer.subQuestionId,
-              questionText: questionInfo.text,
-              subQuestionText: subQuestionInfo?.text,
-              groupTitle: questionInfo.groupTitle,
-              isText: questionInfo.type === 'text',
-              order: questionInfo.order + (subQuestionInfo?.order || 0),
+          if (snapshot && Array.isArray(snapshot)) {
+            snapshot.forEach((group: any) => {
+              if (Array.isArray(group.questions)) {
+                group.questions.forEach((q: any) => {
+                  if (q.id === answer.questionId) {
+                    if (answer.subQuestionId) {
+                      // 하위 질문 찾기
+                      if (Array.isArray(q.subQuestions)) {
+                        const sub = q.subQuestions.find((s: any) => s.id === answer.subQuestionId)
+                        if (sub) {
+                          answerKeyToDescriptor.set(key, {
+                            questionId: answer.questionId,
+                            subQuestionId: answer.subQuestionId,
+                            questionText: q.text,
+                            subQuestionText: sub.text,
+                            groupTitle: group.title || '',
+                            isText: q.type === 'text',
+                            order: 999900 + (group.order || 0) * 1000 + (q.order || 0) * 10,
+                          })
+                          foundInSnapshot = true
+                        }
+                      }
+                    } else {
+                      // 메인 질문
+                      answerKeyToDescriptor.set(key, {
+                        questionId: answer.questionId,
+                        questionText: q.text,
+                        groupTitle: group.title || '',
+                        isText: q.type === 'text',
+                        order: 999900 + (group.order || 0) * 1000 + (q.order || 0) * 10,
+                      })
+                      foundInSnapshot = true
+                    }
+                  }
+                })
+              }
             })
-          } else {
-            // 데이터베이스에서 질문 정보를 찾지 못한 경우 (설문이 수정되어 삭제된 질문)
-            answerKeyToDescriptor.set(key, {
-              questionId: answer.questionId,
-              subQuestionId: answer.subQuestionId,
-              questionText: `[삭제된 질문] ID: ${answer.questionId}`,
-              subQuestionText: answer.subQuestionId ? `[삭제된 하위질문] ID: ${answer.subQuestionId}` : undefined,
-              groupTitle: '삭제된 질문',
-              isText: answer.textValue !== undefined,
-              order: 999999,
-            })
+          }
+          
+          // question_snapshot에서 찾지 못한 경우 데이터베이스에서 찾기
+          if (!foundInSnapshot) {
+            const questionInfo = questionIdToQuestionMap.get(answer.questionId)
+            
+            if (questionInfo) {
+              const subQuestionInfo = answer.subQuestionId 
+                ? questionInfo.subQuestions.get(answer.subQuestionId)
+                : null
+                
+              answerKeyToDescriptor.set(key, {
+                questionId: answer.questionId,
+                subQuestionId: answer.subQuestionId,
+                questionText: questionInfo.text,
+                subQuestionText: subQuestionInfo?.text,
+                groupTitle: questionInfo.groupTitle,
+                isText: questionInfo.type === 'text',
+                order: questionInfo.order + (subQuestionInfo?.order || 0),
+              })
+            } else {
+              // 질문 정보를 찾지 못한 경우 (설문이 수정되어 삭제된 질문)
+              answerKeyToDescriptor.set(key, {
+                questionId: answer.questionId,
+                subQuestionId: answer.subQuestionId,
+                questionText: `[삭제된 질문]`,
+                subQuestionText: answer.subQuestionId ? `[삭제된 하위질문]` : undefined,
+                groupTitle: '삭제된 질문',
+                isText: answer.textValue !== undefined,
+                order: 999999,
+              })
+            }
           }
         }
       })
@@ -360,11 +447,12 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => a.order - b.order)
     
     console.log(`[Export] Total descriptors: ${sortedDescriptors.length}`)
-    console.log(`[Export] Descriptors:`, sortedDescriptors.map(d => ({
+    console.log(`[Export] Descriptors (first 5):`, sortedDescriptors.slice(0, 5).map(d => ({
       questionId: d.questionId,
       subQuestionId: d.subQuestionId,
       questionText: d.questionText,
       groupTitle: d.groupTitle,
+      isText: d.isText,
     })))
 
     // Excel 헤더 생성
@@ -418,9 +506,14 @@ export async function GET(request: NextRequest) {
                 value: a.value,
                 textValue: a.textValue,
               })),
+              descriptorsCount: sortedDescriptors.length,
+              descriptorKeys: sortedDescriptors.slice(0, 5).map(d => 
+                d.subQuestionId ? `${d.questionId}:${d.subQuestionId}` : d.questionId
+              ),
             })
           }
 
+          let matchedAnswers = 0
           sortedDescriptors.forEach((desc, descIndex) => {
             // 답변 찾기: questionId와 subQuestionId로 정확히 매칭
             const answer = response.answers?.find((a) => {
@@ -432,8 +525,8 @@ export async function GET(request: NextRequest) {
               }
             })
 
-            if (responseIndex === 0 && descIndex < 3) {
-              console.log(`[Export] Descriptor ${descIndex}:`, {
+            if (responseIndex === 0 && descIndex < 5) {
+              console.log(`[Export] Descriptor ${descIndex} (${desc.groupTitle} - ${desc.questionText}):`, {
                 questionId: desc.questionId,
                 subQuestionId: desc.subQuestionId,
                 isText: desc.isText,
@@ -443,11 +536,12 @@ export async function GET(request: NextRequest) {
                   value: answer.value,
                   textValue: answer.textValue,
                 } : null,
-                allAnswers: response.answers?.map(a => ({
-                  questionId: a.questionId,
-                  subQuestionId: a.subQuestionId,
-                })),
+                answerKey: desc.subQuestionId ? `${desc.questionId}:${desc.subQuestionId}` : desc.questionId,
               })
+            }
+
+            if (answer) {
+              matchedAnswers++
             }
 
             if (!answer) {
@@ -463,6 +557,11 @@ export async function GET(request: NextRequest) {
               }
             }
           })
+
+          if (responseIndex === 0) {
+            console.log(`[Export] First response matched ${matchedAnswers} answers out of ${sortedDescriptors.length} descriptors`)
+            console.log(`[Export] Row data (first 10 columns):`, row.slice(0, 10))
+          }
 
           excelData.push(row)
         })
