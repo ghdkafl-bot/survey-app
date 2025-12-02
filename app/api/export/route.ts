@@ -569,17 +569,32 @@ export async function GET(request: NextRequest) {
         const excelData: any[] = [headers]
 
         groupResponses.forEach((response, responseIndex) => {
-          // 제출일시를 읽기 쉬운 형식으로 변환 (YYYY-MM-DD HH:mm:ss)
+          // 제출일시를 한국 시간(KST, UTC+9)으로 변환하여 읽기 쉬운 형식으로 표시 (YYYY-MM-DD HH:mm:ss)
           let formattedDate = response.submittedAt
           try {
             const date = new Date(response.submittedAt)
             if (!isNaN(date.getTime())) {
-              const year = date.getFullYear()
-              const month = String(date.getMonth() + 1).padStart(2, '0')
-              const day = String(date.getDate()).padStart(2, '0')
-              const hours = String(date.getHours()).padStart(2, '0')
-              const minutes = String(date.getMinutes()).padStart(2, '0')
-              const seconds = String(date.getSeconds()).padStart(2, '0')
+              // 한국 시간대(Asia/Seoul)로 변환
+              // Intl.DateTimeFormat을 사용하여 정확한 시간대 변환
+              const formatter = new Intl.DateTimeFormat('ko-KR', {
+                timeZone: 'Asia/Seoul',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+              })
+              
+              const parts = formatter.formatToParts(date)
+              const year = parts.find(p => p.type === 'year')?.value || ''
+              const month = parts.find(p => p.type === 'month')?.value.padStart(2, '0') || ''
+              const day = parts.find(p => p.type === 'day')?.value.padStart(2, '0') || ''
+              const hours = parts.find(p => p.type === 'hour')?.value.padStart(2, '0') || ''
+              const minutes = parts.find(p => p.type === 'minute')?.value.padStart(2, '0') || ''
+              const seconds = parts.find(p => p.type === 'second')?.value.padStart(2, '0') || ''
+              
               formattedDate = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
             }
           } catch (e) {
@@ -655,8 +670,8 @@ export async function GET(request: NextRequest) {
             } else {
               // null 값도 처리 (해당없음 옵션)
               if (answer.value === null) {
-                row.push('해당없음')
-              } else {
+          row.push('해당없음')
+        } else {
                 row.push(typeof answer.value === 'number' ? answer.value : '')
               }
             }
@@ -680,17 +695,17 @@ export async function GET(request: NextRequest) {
             }
           }
 
-          excelData.push(row)
-        })
-        
+      excelData.push(row)
+    })
+
         console.log(`[Export] Sheet "${typeKey}": ${excelData.length - 1} rows (${excelData.length - 1} responses + 1 header)`)
 
-        const ws = XLSX.utils.aoa_to_sheet(excelData)
+    const ws = XLSX.utils.aoa_to_sheet(excelData)
         const colWidths = headers.map(() => ({ wch: 30 }))
         colWidths[0] = { wch: 20 } // 제출일시 컬럼 너비 (YYYY-MM-DD HH:mm:ss 형식)
         colWidths[1] = { wch: 15 } // 환자 성함
         colWidths[2] = { wch: 15 } // 환자 유형
-        ws['!cols'] = colWidths
+    ws['!cols'] = colWidths
         XLSX.utils.book_append_sheet(wb, ws, sanitizeSheetName(typeKey))
       })
     }
