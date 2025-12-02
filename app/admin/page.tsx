@@ -94,15 +94,69 @@ export default function AdminPage() {
       fetchHomepageConfig()
     }
   }, [])
+  
+  // 페이지 포커스 시 홈페이지 설정 다시 불러오기
+  useEffect(() => {
+    if (!isAuthenticated) return
+    
+    const handleFocus = () => {
+      console.log('[Admin] Window focused, refreshing homepage config')
+      fetchHomepageConfig()
+    }
+    
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        console.log('[Admin] Page visible, refreshing homepage config')
+        fetchHomepageConfig()
+      }
+    }
+    
+    // 로컬 스토리지 변경 감지 (다른 탭에서 설정이 업데이트된 경우)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'homepageConfigUpdated') {
+        console.log('[Admin] Detected config update in another tab, refreshing...')
+        fetchHomepageConfig()
+      }
+    }
+    
+    window.addEventListener('focus', handleFocus)
+    window.addEventListener('storage', handleStorageChange)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('storage', handleStorageChange)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [isAuthenticated])
 
   const fetchHomepageConfig = async () => {
     try {
-      const res = await fetch('/api/homepage-config', { cache: 'no-store' })
+      const timestamp = new Date().getTime()
+      const res = await fetch(`/api/homepage-config?t=${timestamp}`, { 
+        method: 'GET',
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        },
+      })
       if (!res.ok) throw new Error('Failed to load homepage config')
       const data = await res.json()
-      setHomepageConfig(data)
+      console.log('[Admin] Fetched homepage config:', data)
+      
+      if (data && data.title && data.description) {
+        setHomepageConfig({
+          title: data.title.trim(),
+          description: data.description.trim(),
+        })
+        console.log('[Admin] Homepage config state updated')
+      } else {
+        console.warn('[Admin] Invalid homepage config data:', data)
+        setHomepageConfig(DEFAULT_HOMEPAGE_CONFIG)
+      }
     } catch (error) {
-      console.error('Failed to fetch homepage config:', error)
+      console.error('[Admin] Failed to fetch homepage config:', error)
       setHomepageConfig(DEFAULT_HOMEPAGE_CONFIG)
     }
   }
@@ -1434,21 +1488,64 @@ export default function AdminPage() {
                     
                     console.log('[Admin] Config saved successfully:', responseData)
                     
-                    // 저장된 데이터로 상태 업데이트 (API 응답 사용, 정규화)
-                    if (responseData && responseData.title && responseData.description) {
-                      const updatedConfig = {
-                        title: responseData.title.trim(),
-                        description: responseData.description.trim(),
-                      }
-                      setHomepageConfig(updatedConfig)
-                      console.log('[Admin] State updated with saved config:', updatedConfig)
-                    } else {
-                      // API 응답이 없으면 입력한 값으로 직접 업데이트
-                      setHomepageConfig({
-                        title: titleToSave,
-                        description: descriptionToSave,
+                    // 저장 후 서버에서 최신 데이터 다시 가져오기 (확인용)
+                    try {
+                      const verifyTimestamp = new Date().getTime()
+                      const verifyRes = await fetch(`/api/homepage-config?t=${verifyTimestamp}`, {
+                        method: 'GET',
+                        cache: 'no-store',
+                        headers: {
+                          'Cache-Control': 'no-cache, no-store, must-revalidate',
+                          'Pragma': 'no-cache',
+                        },
                       })
-                      console.log('[Admin] State updated with input values')
+                      if (verifyRes.ok) {
+                        const verifyData = await verifyRes.json()
+                        console.log('[Admin] Verified saved config from server:', verifyData)
+                        // 서버에서 가져온 데이터로 상태 업데이트
+                        if (verifyData && verifyData.title && verifyData.description) {
+                          setHomepageConfig({
+                            title: verifyData.title.trim(),
+                            description: verifyData.description.trim(),
+                          })
+                          console.log('[Admin] State updated with verified config from server')
+                        } else {
+                          // 서버 응답이 없으면 API 응답으로 업데이트
+                          if (responseData && responseData.title && responseData.description) {
+                            setHomepageConfig({
+                              title: responseData.title.trim(),
+                              description: responseData.description.trim(),
+                            })
+                            console.log('[Admin] State updated with API response')
+                          }
+                        }
+                      } else {
+                        // 검증 실패 시 API 응답으로 업데이트
+                        if (responseData && responseData.title && responseData.description) {
+                          setHomepageConfig({
+                            title: responseData.title.trim(),
+                            description: responseData.description.trim(),
+                          })
+                          console.log('[Admin] State updated with API response (verification failed)')
+                        }
+                      }
+                    } catch (verifyError) {
+                      console.warn('[Admin] Failed to verify saved config:', verifyError)
+                      // 검증 실패 시 API 응답으로 업데이트
+                      if (responseData && responseData.title && responseData.description) {
+                        setHomepageConfig({
+                          title: responseData.title.trim(),
+                          description: responseData.description.trim(),
+                        })
+                        console.log('[Admin] State updated with API response (verification error)')
+                      } else {
+                        // API 응답도 없으면 입력한 값으로 직접 업데이트
+                        setHomepageConfig({
+                          title: titleToSave,
+                          description: descriptionToSave,
+                        })
+                        console.log('[Admin] State updated with input values')
+                      }
                     }
                     
                     alert('홈페이지 설정이 저장되었습니다.')

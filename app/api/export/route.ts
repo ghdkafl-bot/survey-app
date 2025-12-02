@@ -498,8 +498,19 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    // 환자 정보 추가 질문 헤더 생성
+    const patientInfoHeaders: string[] = []
+    if (survey.patientInfoConfig?.additionalQuestions && survey.patientInfoConfig.additionalQuestions.length > 0) {
+      survey.patientInfoConfig.additionalQuestions.forEach((q) => {
+        patientInfoHeaders.push(`환자정보 - ${q.text}`)
+      })
+      console.log(`[Export] Added ${patientInfoHeaders.length} patient info question headers:`, patientInfoHeaders)
+    } else {
+      console.log(`[Export] No additional patient info questions found`)
+    }
+    
     // Excel 헤더 생성
-    const headers: string[] = ['제출일시', '환자 성함', '환자 유형']
+    const headers: string[] = ['제출일시', '환자 성함', '환자 유형', ...patientInfoHeaders]
     sortedDescriptors.forEach((desc) => {
       if (desc.isText) {
         headers.push(`${desc.groupTitle} - ${desc.questionText} (주관식)`)
@@ -601,10 +612,31 @@ export async function GET(request: NextRequest) {
             console.warn(`[Export] Failed to format date: ${response.submittedAt}`, e)
           }
           
+          // 환자 정보 추가 질문 답변 추가
+          const patientInfoAnswers: string[] = []
+          if (survey.patientInfoConfig?.additionalQuestions && survey.patientInfoConfig.additionalQuestions.length > 0) {
+            survey.patientInfoConfig.additionalQuestions.forEach((q) => {
+              const answer = response.patientInfoAnswers?.[q.id]
+              if (answer && Array.isArray(answer) && answer.length > 0) {
+                patientInfoAnswers.push(answer.join(', '))
+              } else {
+                patientInfoAnswers.push('')
+              }
+            })
+            
+            if (responseIndex === 0) {
+              console.log(`[Export] First response patient info answers:`, {
+                patientInfoAnswers: response.patientInfoAnswers,
+                formattedAnswers: patientInfoAnswers,
+              })
+            }
+          }
+          
           const row: any[] = [
             formattedDate,
             response.patientName || '',
             response.patientType || '',
+            ...patientInfoAnswers,
           ]
 
           if (responseIndex === 0) {
