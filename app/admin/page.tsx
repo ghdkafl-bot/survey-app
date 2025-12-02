@@ -1488,65 +1488,51 @@ export default function AdminPage() {
                     
                     console.log('[Admin] Config saved successfully:', responseData)
                     
-                    // 저장 후 서버에서 최신 데이터 다시 가져오기 (확인용)
-                    try {
-                      const verifyTimestamp = new Date().getTime()
-                      const verifyRes = await fetch(`/api/homepage-config?t=${verifyTimestamp}`, {
-                        method: 'GET',
-                        cache: 'no-store',
-                        headers: {
-                          'Cache-Control': 'no-cache, no-store, must-revalidate',
-                          'Pragma': 'no-cache',
-                        },
+                    // 저장된 데이터로 상태 즉시 업데이트 (API 응답 우선 사용)
+                    if (responseData && responseData.title && responseData.description) {
+                      const updatedConfig = {
+                        title: responseData.title.trim(),
+                        description: responseData.description.trim(),
+                      }
+                      setHomepageConfig(updatedConfig)
+                      console.log('[Admin] State updated immediately with API response:', updatedConfig)
+                    } else {
+                      // API 응답이 없으면 입력한 값으로 직접 업데이트
+                      setHomepageConfig({
+                        title: titleToSave,
+                        description: descriptionToSave,
                       })
-                      if (verifyRes.ok) {
-                        const verifyData = await verifyRes.json()
-                        console.log('[Admin] Verified saved config from server:', verifyData)
-                        // 서버에서 가져온 데이터로 상태 업데이트
-                        if (verifyData && verifyData.title && verifyData.description) {
-                          setHomepageConfig({
-                            title: verifyData.title.trim(),
-                            description: verifyData.description.trim(),
-                          })
-                          console.log('[Admin] State updated with verified config from server')
-                        } else {
-                          // 서버 응답이 없으면 API 응답으로 업데이트
-                          if (responseData && responseData.title && responseData.description) {
+                      console.log('[Admin] State updated with input values (no API response)')
+                    }
+                    
+                    // 저장 후 짧은 지연 후 서버에서 최신 데이터 다시 가져오기 (확인용)
+                    setTimeout(async () => {
+                      try {
+                        const verifyTimestamp = new Date().getTime()
+                        const verifyRes = await fetch(`/api/homepage-config?t=${verifyTimestamp}`, {
+                          method: 'GET',
+                          cache: 'no-store',
+                          headers: {
+                            'Cache-Control': 'no-cache, no-store, must-revalidate',
+                            'Pragma': 'no-cache',
+                          },
+                        })
+                        if (verifyRes.ok) {
+                          const verifyData = await verifyRes.json()
+                          console.log('[Admin] Verified saved config from server (after delay):', verifyData)
+                          // 서버에서 가져온 데이터로 상태 업데이트 (최신 데이터 보장)
+                          if (verifyData && verifyData.title && verifyData.description) {
                             setHomepageConfig({
-                              title: responseData.title.trim(),
-                              description: responseData.description.trim(),
+                              title: verifyData.title.trim(),
+                              description: verifyData.description.trim(),
                             })
-                            console.log('[Admin] State updated with API response')
+                            console.log('[Admin] State updated with verified config from server')
                           }
                         }
-                      } else {
-                        // 검증 실패 시 API 응답으로 업데이트
-                        if (responseData && responseData.title && responseData.description) {
-                          setHomepageConfig({
-                            title: responseData.title.trim(),
-                            description: responseData.description.trim(),
-                          })
-                          console.log('[Admin] State updated with API response (verification failed)')
-                        }
+                      } catch (verifyError) {
+                        console.warn('[Admin] Failed to verify saved config:', verifyError)
                       }
-                    } catch (verifyError) {
-                      console.warn('[Admin] Failed to verify saved config:', verifyError)
-                      // 검증 실패 시 API 응답으로 업데이트
-                      if (responseData && responseData.title && responseData.description) {
-                        setHomepageConfig({
-                          title: responseData.title.trim(),
-                          description: responseData.description.trim(),
-                        })
-                        console.log('[Admin] State updated with API response (verification error)')
-                      } else {
-                        // API 응답도 없으면 입력한 값으로 직접 업데이트
-                        setHomepageConfig({
-                          title: titleToSave,
-                          description: descriptionToSave,
-                        })
-                        console.log('[Admin] State updated with input values')
-                      }
-                    }
+                    }, 500) // 500ms 후 검증
                     
                     alert('홈페이지 설정이 저장되었습니다.')
                     

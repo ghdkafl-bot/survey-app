@@ -748,6 +748,11 @@ export async function GET(request: NextRequest) {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="survey-${surveyId}-${Date.now()}.xlsx"`,
+        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, private',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'X-Content-Type-Options': 'nosniff',
+        'Last-Modified': new Date().toUTCString(),
       },
     })
   } catch (error) {

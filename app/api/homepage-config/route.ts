@@ -80,14 +80,42 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    console.log('Updating homepage config:', { title, description })
-    const config = await db.updateHomepageConfig({ title, description })
-    console.log('Homepage config updated successfully:', config)
-    const response = NextResponse.json(config)
-    // 캐시 제어 헤더 추가
-    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
-    response.headers.set('Pragma', 'no-cache')
-    response.headers.set('Expires', '0')
+    console.log('[API] PUT /api/homepage-config - Updating config:', { title, description })
+    
+    // 입력값 정규화
+    const normalizedTitle = title.trim()
+    const normalizedDescription = description.trim()
+    
+    console.log('[API] PUT /api/homepage-config - Normalized values:', { 
+      title: normalizedTitle, 
+      description: normalizedDescription 
+    })
+    
+    const config = await db.updateHomepageConfig({ 
+      title: normalizedTitle, 
+      description: normalizedDescription 
+    })
+    
+    console.log('[API] PUT /api/homepage-config - Config updated successfully:', JSON.stringify(config, null, 2))
+    
+    // 응답 데이터 검증
+    if (!config || typeof config !== 'object' || !config.title || !config.description) {
+      console.error('[API] PUT /api/homepage-config - Invalid config returned from DB:', config)
+      throw new Error('Invalid config returned from database')
+    }
+    
+    const response = NextResponse.json(config, {
+      status: 200,
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, private',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Content-Type': 'application/json; charset=utf-8',
+        'Last-Modified': new Date().toUTCString(),
+      },
+    })
+    
+    console.log('[API] PUT /api/homepage-config - Response created:', JSON.stringify(config, null, 2))
     return response
   } catch (error) {
     console.error('Failed to update homepage config:', error)
