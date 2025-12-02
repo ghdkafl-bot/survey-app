@@ -658,12 +658,12 @@ export const db = {
     const supabase = getSupabaseServiceClient()
     console.log(`[DB] getResponsesBySurvey - surveyId: ${surveyId}`)
     
-    // 1단계: responses 테이블에서 기본 정보 조회
+    // 1단계: responses 테이블에서 기본 정보 조회 (최신 데이터부터)
     const { data: responsesData, error: responsesError } = await supabase
       .from('responses')
       .select('id, survey_id, patient_name, patient_type, patient_info_answers, submitted_at, question_snapshot')
       .eq('survey_id', surveyId)
-      .order('submitted_at', { ascending: true })
+      .order('submitted_at', { ascending: false }) // 최신 데이터부터 가져오기
 
     if (responsesError) {
       console.error(`[DB] getResponsesBySurvey - Error fetching responses:`, responsesError)
@@ -676,6 +676,29 @@ export const db = {
     }
     
     console.log(`[DB] getResponsesBySurvey - Found ${responsesData.length} responses`)
+    
+    // 최신 응답 확인
+    if (responsesData.length > 0) {
+      const latestResponse = responsesData[0] // 최신 응답 (descending order)
+      const oldestResponse = responsesData[responsesData.length - 1] // 가장 오래된 응답
+      console.log(`[DB] getResponsesBySurvey - Latest response:`, {
+        id: latestResponse.id,
+        submittedAt: latestResponse.submitted_at,
+        patientName: latestResponse.patient_name,
+        patientType: latestResponse.patient_type,
+      })
+      console.log(`[DB] getResponsesBySurvey - Oldest response:`, {
+        id: oldestResponse.id,
+        submittedAt: oldestResponse.submitted_at,
+        patientName: oldestResponse.patient_name,
+        patientType: oldestResponse.patient_type,
+      })
+      
+      // 모든 응답의 날짜 범위 확인
+      const dates = responsesData.map(r => r.submitted_at).sort()
+      console.log(`[DB] getResponsesBySurvey - Date range: ${dates[0]} ~ ${dates[dates.length - 1]}`)
+      console.log(`[DB] getResponsesBySurvey - Total unique dates: ${new Set(dates).size}`)
+    }
     
     // 2단계: 각 response의 answers를 별도로 조회
     const responseIds = responsesData.map(r => r.id)

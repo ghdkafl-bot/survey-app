@@ -69,6 +69,35 @@ export async function GET(request: NextRequest) {
     const allResponses = await db.getResponsesBySurvey(surveyId)
     console.log(`[Export] Total responses fetched: ${allResponses.length}`)
     
+    // 최신 응답 확인
+    if (allResponses.length > 0) {
+      const latestResponse = allResponses[0]
+      const oldestResponse = allResponses[allResponses.length - 1]
+      console.log(`[Export] Latest response in fetched data:`, {
+        id: latestResponse.id,
+        submittedAt: latestResponse.submittedAt,
+        patientName: latestResponse.patientName,
+        patientType: latestResponse.patientType,
+        answersCount: latestResponse.answers?.length || 0,
+      })
+      console.log(`[Export] Oldest response in fetched data:`, {
+        id: oldestResponse.id,
+        submittedAt: oldestResponse.submittedAt,
+        patientName: oldestResponse.patientName,
+        patientType: oldestResponse.patientType,
+        answersCount: oldestResponse.answers?.length || 0,
+      })
+      
+      // 모든 응답의 날짜 목록
+      const allDates = allResponses.map(r => r.submittedAt).sort()
+      console.log(`[Export] All response dates (${allDates.length} total):`, {
+        first: allDates[0],
+        last: allDates[allDates.length - 1],
+        uniqueCount: new Set(allDates).size,
+        recent5: allDates.slice(-5), // 최근 5개
+      })
+    }
+    
     // responses 테이블에서 question_snapshot도 함께 조회
     const supabase = getSupabaseServiceClient()
     const { data: responsesWithSnapshot, error: snapshotError } = await supabase
@@ -97,11 +126,49 @@ export async function GET(request: NextRequest) {
       })
     }
     
+    // 날짜 필터링 적용
     const responses = allResponses.filter((response) =>
       !from && !to ? true : isWithinRange(response.submittedAt, from, to)
     )
     
     console.log(`[Export] Filtered responses: ${responses.length} out of ${allResponses.length}`)
+    
+    // 필터링 후 최신 응답 확인
+    if (responses.length > 0) {
+      const filteredLatest = responses[0] // 최신 응답
+      const filteredOldest = responses[responses.length - 1] // 가장 오래된 응답
+      console.log(`[Export] Filtered - Latest response:`, {
+        id: filteredLatest.id,
+        submittedAt: filteredLatest.submittedAt,
+        patientName: filteredLatest.patientName,
+        patientType: filteredLatest.patientType,
+      })
+      console.log(`[Export] Filtered - Oldest response:`, {
+        id: filteredOldest.id,
+        submittedAt: filteredOldest.submittedAt,
+        patientName: filteredOldest.patientName,
+        patientType: filteredOldest.patientType,
+      })
+      
+      // 필터링된 응답의 날짜 목록
+      const filteredDates = responses.map(r => r.submittedAt).sort()
+      console.log(`[Export] Filtered response dates:`, {
+        first: filteredDates[0],
+        last: filteredDates[filteredDates.length - 1],
+        uniqueCount: new Set(filteredDates).size,
+        recent5: filteredDates.slice(-5), // 최근 5개
+      })
+    } else {
+      console.warn(`[Export] ⚠️ No responses after filtering!`)
+      console.warn(`[Export] Filter criteria: from=${from}, to=${to}`)
+      console.warn(`[Export] All responses count: ${allResponses.length}`)
+      if (allResponses.length > 0) {
+        console.warn(`[Export] All responses date range:`, {
+          latest: allResponses[0].submittedAt,
+          oldest: allResponses[allResponses.length - 1].submittedAt,
+        })
+      }
+    }
     
     // 필터링된 응답의 환자 유형 분포 확인
     const filteredPatientTypes = new Map<string, number>()
@@ -596,7 +663,20 @@ export async function GET(request: NextRequest) {
         console.log(`[Export] Processing sheet "${typeKey}" with ${groupResponses.length} responses`)
         const excelData: any[] = [headers]
 
-        groupResponses.forEach((response, responseIndex) => {
+        // 응답을 제출일시 기준으로 정렬 (최신순)
+        const sortedGroupResponses = [...groupResponses].sort((a, b) => {
+          const dateA = new Date(a.submittedAt).getTime()
+          const dateB = new Date(b.submittedAt).getTime()
+          return dateB - dateA // 최신순 (내림차순)
+        })
+        
+        console.log(`[Export] Sheet "${typeKey}": Processing ${sortedGroupResponses.length} responses (sorted by date, newest first)`)
+        if (sortedGroupResponses.length > 0) {
+          console.log(`[Export] Sheet "${typeKey}": Latest response date: ${sortedGroupResponses[0].submittedAt}`)
+          console.log(`[Export] Sheet "${typeKey}": Oldest response date: ${sortedGroupResponses[sortedGroupResponses.length - 1].submittedAt}`)
+        }
+        
+        sortedGroupResponses.forEach((response, responseIndex) => {
           // 제출일시를 한국 시간(KST, UTC+9)으로 변환하여 읽기 쉬운 형식으로 표시 (YYYY-MM-DD HH:mm:ss)
           let formattedDate = response.submittedAt
           try {
