@@ -5,16 +5,19 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   try {
-    console.log('[API] GET /api/homepage-config - Fetching config')
+    const timestamp = new Date().toISOString()
+    console.log(`[API] GET /api/homepage-config - ${timestamp}`)
     console.log('[API] Request URL:', request.url)
     console.log('[API] Request headers:', Object.fromEntries(request.headers.entries()))
     
     const config = await db.getHomepageConfig()
-    console.log('[API] GET /api/homepage-config - Config fetched from DB:', JSON.stringify(config, null, 2))
+    console.log('[API] ✅ Config fetched from Supabase:', JSON.stringify(config, null, 2))
+    console.log('[API] Title:', config.title)
+    console.log('[API] Description:', config.description)
     
     // 응답 데이터 검증
     if (!config || typeof config !== 'object' || !('title' in config) || !('description' in config)) {
-      console.error('[API] Invalid config format:', config)
+      console.error('[API] ❌ Invalid config format:', config)
       throw new Error('Invalid config format received from database')
     }
     
@@ -32,11 +35,16 @@ export async function GET(request: NextRequest) {
         'Content-Type': 'application/json; charset=utf-8',
         'Last-Modified': new Date().toUTCString(),
         'X-Timestamp': new Date().getTime().toString(),
+        'X-Config-Title': config.title, // 디버깅용 헤더
+        'X-Config-Description-Length': config.description.length.toString(), // 디버깅용 헤더
       },
     })
     
-    console.log('[API] GET /api/homepage-config - Response created:', JSON.stringify(config, null, 2))
-    console.log('[API] Response headers:', Object.fromEntries(response.headers.entries()))
+    console.log('[API] ✅ Response created with config:', {
+      title: config.title,
+      descriptionLength: config.description.length,
+      descriptionPreview: config.description.substring(0, 50) + '...'
+    })
     return response
   } catch (error) {
     console.error('[API] GET /api/homepage-config - Error:', error)

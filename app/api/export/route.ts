@@ -340,7 +340,10 @@ export async function GET(request: NextRequest) {
     }>()
     
     // 1단계: 현재 설문 구조를 기준으로 descriptor 생성 (설문이 수정되지 않은 경우)
+    // 모든 질문을 Excel에 포함 (답변이 없어도 질문은 표시)
+    console.log(`[Export] Creating descriptors from survey structure: ${survey.questionGroups.length} groups`)
     survey.questionGroups.forEach((group, groupIdx) => {
+      console.log(`[Export] Processing group ${groupIdx}: ${group.title}, ${group.questions.length} questions`)
       group.questions.forEach((question, questionIdx) => {
         if (question.type === 'text') {
           const key = `${question.id}`
@@ -351,6 +354,7 @@ export async function GET(request: NextRequest) {
             isText: true,
             order: groupIdx * 1000 + questionIdx * 10,
           })
+          console.log(`[Export] Added text question descriptor: ${group.title} - ${question.text}`)
         } else {
           if (question.subQuestions.length > 0) {
             question.subQuestions.forEach((sub, subIdx) => {
@@ -364,6 +368,7 @@ export async function GET(request: NextRequest) {
                 isText: false,
                 order: groupIdx * 1000 + questionIdx * 10 + subIdx,
               })
+              console.log(`[Export] Added scale question descriptor: ${group.title} - ${question.text} (${sub.text})`)
             })
           } else {
             const key = `${question.id}`
@@ -374,10 +379,12 @@ export async function GET(request: NextRequest) {
               isText: false,
               order: groupIdx * 1000 + questionIdx * 10,
             })
+            console.log(`[Export] Added scale question descriptor (no sub-questions): ${group.title} - ${question.text}`)
           }
         }
       })
     })
+    console.log(`[Export] Created ${answerKeyToDescriptor.size} descriptors from survey structure`)
     
     // 2단계: 답변 데이터에 있는 질문 중 설문 구조에 없는 질문 추가
     // question_snapshot 또는 데이터베이스에서 질문 정보 조회
@@ -471,7 +478,17 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => a.order - b.order)
     
     console.log(`[Export] Total descriptors: ${sortedDescriptors.length}`)
-    console.log(`[Export] Descriptors (first 5):`, sortedDescriptors.slice(0, 5).map(d => ({
+    if (sortedDescriptors.length === 0) {
+      console.error(`[Export] ⚠️ WARNING: No descriptors found! This means no questions will be exported.`)
+      console.error(`[Export] Survey has ${survey.questionGroups.length} question groups`)
+      survey.questionGroups.forEach((group, gIdx) => {
+        console.error(`[Export] Group ${gIdx}: ${group.title}, ${group.questions.length} questions`)
+        group.questions.forEach((q, qIdx) => {
+          console.error(`[Export]   Question ${qIdx}: ${q.text} (${q.type}), ${q.subQuestions.length} sub-questions`)
+        })
+      })
+    }
+    console.log(`[Export] Descriptors (first 10):`, sortedDescriptors.slice(0, 10).map(d => ({
       questionId: d.questionId,
       subQuestionId: d.subQuestionId,
       questionText: d.questionText,
@@ -695,24 +712,36 @@ export async function GET(request: NextRequest) {
               matchedAnswers++
             }
 
+            // 답변이 없어도 빈 셀로 표시 (질문은 항상 Excel에 포함)
             if (!answer) {
-              row.push('')
+              row.push('') // 답변 없음 - 빈 셀로 표시
             } else if (desc.isText) {
+              // 주관식 답변
               row.push(answer.textValue || '')
             } else {
-              // null 값도 처리 (해당없음 옵션)
+              // 객관식 답변
               if (answer.value === null) {
-          row.push('해당없음')
-        } else {
-                row.push(typeof answer.value === 'number' ? answer.value : '')
+                row.push('해당없음')
+              } else if (typeof answer.value === 'number') {
+                row.push(answer.value)
+              } else {
+                row.push('') // 값이 없으면 빈 셀
               }
             }
           })
 
           if (responseIndex === 0) {
             console.log(`[Export] First response matched ${matchedAnswers} answers out of ${sortedDescriptors.length} descriptors`)
-            console.log(`[Export] Row data (first 10 columns):`, row.slice(0, 10))
+            console.log(`[Export] Row data (first 15 columns):`, row.slice(0, 15))
             console.log(`[Export] Row length: ${row.length}, Headers length: ${headers.length}`)
+            console.log(`[Export] Row breakdown:`, {
+              date: row[0],
+              patientName: row[1],
+              patientType: row[2],
+              patientInfoAnswersCount: patientInfoAnswers.length,
+              questionAnswersCount: row.length - 3 - patientInfoAnswers.length,
+              totalCells: row.length,
+            })
             
             // 매칭되지 않은 답변 확인
             const unmatchedAnswers = response.answers?.filter(a => {
@@ -724,6 +753,29 @@ export async function GET(request: NextRequest) {
             })
             if (unmatchedAnswers && unmatchedAnswers.length > 0) {
               console.warn(`[Export] Unmatched answers in first response:`, unmatchedAnswers)
+            }
+            
+            // 매칭된 답변 상세 확인
+            if (matchedAnswers > 0) {
+              console.log(`[Export] Matched answers details:`, 
+                sortedDescriptors.slice(0, 10).map((desc, idx) => {
+                  const answer = response.answers?.find((a) => {
+                    const questionMatch = a.questionId === desc.questionId
+                    if (desc.subQuestionId) {
+                      return questionMatch && a.subQuestionId === desc.subQuestionId
+                    } else {
+                      return questionMatch && !a.subQuestionId
+                    }
+                  })
+                  return {
+                    index: idx,
+                    descriptor: `${desc.groupTitle} - ${desc.questionText}`,
+                    hasAnswer: !!answer,
+                    answerValue: answer?.value,
+                    answerText: answer?.textValue,
+                  }
+                })
+              )
             }
           }
 

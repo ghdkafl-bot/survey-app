@@ -21,7 +21,7 @@ export default function Home() {
       const timestamp = new Date().getTime()
       const url = `/api/homepage-config?t=${timestamp}${force ? '&_force=' + Math.random() : ''}`
       
-      console.log('[Homepage] Fetching config from:', url)
+      console.log('[Homepage] 🔄 Fetching config from:', url)
       
       const res = await fetch(url, { 
         method: 'GET',
@@ -41,12 +41,14 @@ export default function Home() {
       
       if (!res.ok) {
         const errorText = await res.text()
-        console.error('[Homepage] Response error:', errorText)
+        console.error('[Homepage] ❌ Response error:', errorText)
         throw new Error(`Failed to load homepage config: ${res.status} ${res.statusText}`)
       }
       
       const data = await res.json()
       console.log('[Homepage] ✅ Config data received from API:', JSON.stringify(data, null, 2))
+      console.log('[Homepage] Raw title from API:', data.title)
+      console.log('[Homepage] Raw description from API:', data.description)
       
       // 데이터 검증 및 상태 업데이트
       if (data && typeof data === 'object' && 'title' in data && 'description' in data) {
@@ -60,32 +62,42 @@ export default function Home() {
         }
         
         console.log('[Homepage] ✅ Normalized config:', JSON.stringify(newConfig, null, 2))
-        console.log('[Homepage] Current state before update:', JSON.stringify(homepageConfig, null, 2))
+        console.log('[Homepage] Normalized title:', newConfig.title)
+        console.log('[Homepage] Normalized description:', newConfig.description)
         
-        // 상태가 다를 때만 업데이트 (불필요한 리렌더링 방지)
-        const currentTitle = homepageConfig?.title || ''
-        const currentDescription = homepageConfig?.description || ''
-        
-        // 항상 상태 업데이트 (강제 업데이트)
-        console.log('[Homepage] 🔄 Updating state with new config...')
-        console.log('[Homepage] Current title:', currentTitle)
-        console.log('[Homepage] New title:', newConfig.title)
-        console.log('[Homepage] Current description:', currentDescription.substring(0, 50) + '...')
-        console.log('[Homepage] New description:', newConfig.description.substring(0, 50) + '...')
-        
-        // 직접 상태 업데이트 (항상 업데이트)
+        // 현재 상태와 비교하여 다를 때만 업데이트
         setHomepageConfig((prev) => {
-          console.log('[Homepage] State update function called')
-          console.log('[Homepage] Previous config:', JSON.stringify(prev, null, 2))
-          console.log('[Homepage] New config:', JSON.stringify(newConfig, null, 2))
-          return newConfig
+          const prevTitle = prev?.title || ''
+          const prevDescription = prev?.description || ''
+          
+          console.log('[Homepage] 🔍 Comparing configs:')
+          console.log('[Homepage]   Previous title:', prevTitle)
+          console.log('[Homepage]   New title:', newConfig.title)
+          console.log('[Homepage]   Title match:', prevTitle === newConfig.title)
+          console.log('[Homepage]   Previous description:', prevDescription.substring(0, 100))
+          console.log('[Homepage]   New description:', newConfig.description.substring(0, 100))
+          console.log('[Homepage]   Description match:', prevDescription === newConfig.description)
+          
+          // 값이 같으면 업데이트하지 않음 (불필요한 리렌더링 방지)
+          if (prevTitle === newConfig.title && prevDescription === newConfig.description) {
+            console.log('[Homepage] ⏭️ Config unchanged, skipping update')
+            return prev
+          }
+          
+          console.log('[Homepage] 🔄 Updating state with new config...')
+          console.log('[Homepage]   Previous title:', prevTitle)
+          console.log('[Homepage]   New title:', newConfig.title)
+          console.log('[Homepage]   Previous description length:', prevDescription.length)
+          console.log('[Homepage]   New description length:', newConfig.description.length)
+          
+          // 강제로 새 객체 반환 (React가 변경을 감지하도록)
+          return { ...newConfig }
         })
-        console.log('[Homepage] ✅ State update triggered')
         
         // 상태 업데이트 후 확인
         setTimeout(() => {
-          console.log('[Homepage] ⏰ After state update - Expected config:', JSON.stringify(newConfig, null, 2))
-        }, 100)
+          console.log('[Homepage] ⏰ After state update - Checking if state was updated...')
+        }, 200)
       } else {
         console.warn('[Homepage] ❌ Invalid data format:', data)
         console.warn('[Homepage] Data type:', typeof data)
