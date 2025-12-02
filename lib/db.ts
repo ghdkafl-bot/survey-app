@@ -317,6 +317,30 @@ const mapResponseRecord = (record: any): Response => {
     answersArray = Object.values(record.answers)
   }
   
+  const mappedAnswers = answersArray
+    .map((answer: any) => {
+      // answer가 객체인지 확인
+      if (!answer || typeof answer !== 'object') {
+        console.warn(`[DB] mapResponseRecord - Invalid answer format:`, answer)
+        return null
+      }
+      return {
+        questionId: answer.question_id,
+        subQuestionId: answer.sub_question_id ?? undefined,
+        value: typeof answer.value === 'number' ? answer.value : answer.value === null ? null : undefined,
+        textValue: typeof answer.text_value === 'string' ? answer.text_value : undefined,
+      } as Answer
+    })
+    .filter((a): a is Answer => a !== null)
+  
+  // 디버깅: 답변이 없는 경우 로그
+  if (mappedAnswers.length === 0 && answersArray.length > 0) {
+    console.warn(`[DB] mapResponseRecord - All answers filtered out for response ${record.id}`, {
+      originalAnswers: answersArray,
+      recordAnswers: record.answers,
+    })
+  }
+  
   return {
     id: record.id,
     surveyId: record.survey_id,
@@ -327,21 +351,7 @@ const mapResponseRecord = (record: any): Response => {
       typeof record.patient_info_answers === 'object' && record.patient_info_answers !== null
         ? record.patient_info_answers
         : undefined,
-    answers: answersArray
-      .map((answer: any) => {
-        // answer가 객체인지 확인
-        if (!answer || typeof answer !== 'object') {
-          console.warn(`[DB] mapResponseRecord - Invalid answer format:`, answer)
-          return null
-        }
-        return {
-          questionId: answer.question_id,
-          subQuestionId: answer.sub_question_id ?? undefined,
-          value: typeof answer.value === 'number' ? answer.value : answer.value === null ? null : undefined,
-          textValue: typeof answer.text_value === 'string' ? answer.text_value : undefined,
-        } as Answer
-      })
-      .filter((a): a is Answer => a !== null),
+    answers: mappedAnswers,
   }
 }
 

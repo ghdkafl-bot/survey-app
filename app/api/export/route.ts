@@ -478,6 +478,25 @@ export async function GET(request: NextRequest) {
       groupTitle: d.groupTitle,
       isText: d.isText,
     })))
+    
+    // 응답 데이터 확인
+    console.log(`[Export] Total responses to process: ${responses.length}`)
+    const totalAnswersCount = responses.reduce((sum, r) => sum + (r.answers?.length || 0), 0)
+    console.log(`[Export] Total answers across all responses: ${totalAnswersCount}`)
+    
+    if (responses.length > 0) {
+      const firstResponse = responses[0]
+      console.log(`[Export] First response details:`, {
+        id: firstResponse.id,
+        answersCount: firstResponse.answers?.length || 0,
+        answers: firstResponse.answers?.map(a => ({
+          questionId: a.questionId,
+          subQuestionId: a.subQuestionId,
+          value: a.value,
+          textValue: a.textValue,
+        })),
+      })
+    }
 
     // Excel 헤더 생성
     const headers: string[] = ['제출일시', '환자 성함', '환자 유형']
@@ -570,7 +589,15 @@ export async function GET(request: NextRequest) {
               descriptorKeys: sortedDescriptors.slice(0, 5).map(d => 
                 d.subQuestionId ? `${d.questionId}:${d.subQuestionId}` : d.questionId
               ),
+              answerKeys: response.answers?.map(a => 
+                a.subQuestionId ? `${a.questionId}:${a.subQuestionId}` : a.questionId
+              ) || [],
             })
+          }
+          
+          // 답변이 없는 경우 경고
+          if (!response.answers || response.answers.length === 0) {
+            console.warn(`[Export] Response ${response.id} has no answers!`)
           }
 
           let matchedAnswers = 0
@@ -621,6 +648,19 @@ export async function GET(request: NextRequest) {
           if (responseIndex === 0) {
             console.log(`[Export] First response matched ${matchedAnswers} answers out of ${sortedDescriptors.length} descriptors`)
             console.log(`[Export] Row data (first 10 columns):`, row.slice(0, 10))
+            console.log(`[Export] Row length: ${row.length}, Headers length: ${headers.length}`)
+            
+            // 매칭되지 않은 답변 확인
+            const unmatchedAnswers = response.answers?.filter(a => {
+              const key = a.subQuestionId ? `${a.questionId}:${a.subQuestionId}` : a.questionId
+              return !sortedDescriptors.some(d => {
+                const descKey = d.subQuestionId ? `${d.questionId}:${d.subQuestionId}` : d.questionId
+                return descKey === key
+              })
+            })
+            if (unmatchedAnswers && unmatchedAnswers.length > 0) {
+              console.warn(`[Export] Unmatched answers in first response:`, unmatchedAnswers)
+            }
           }
 
           excelData.push(row)
