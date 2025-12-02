@@ -1380,34 +1380,65 @@ export default function AdminPage() {
                   const titleToSave = homepageConfig.title.trim()
                   const descriptionToSave = homepageConfig.description.trim()
                   
-                  console.log('Saving homepage config:', { title: titleToSave, description: descriptionToSave })
+                  console.log('[Admin] Saving homepage config:', { title: titleToSave, description: descriptionToSave })
                   
                   try {
-                    const res = await fetch('/api/homepage-config', {
+                    // 캐시 무효화를 위해 timestamp 추가
+                    const timestamp = new Date().getTime()
+                    const res = await fetch(`/api/homepage-config?t=${timestamp}`, {
                       method: 'PUT',
-                      headers: { 'Content-Type': 'application/json' },
+                      headers: { 
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache',
+                      },
+                      cache: 'no-store',
                       body: JSON.stringify({
                         title: titleToSave,
                         description: descriptionToSave,
                       }),
-                      cache: 'no-store',
                     })
                     
                     const responseData = await res.json()
-                    console.log('API response:', { status: res.status, ok: res.ok, data: responseData })
+                    console.log('[Admin] API response:', { status: res.status, ok: res.ok, data: responseData })
                     
                     if (!res.ok) {
                       const errorMsg = responseData.details || responseData.error || '알 수 없는 오류'
-                      console.error('API error:', errorMsg)
+                      console.error('[Admin] API error:', errorMsg)
                       alert(`홈페이지 설정 저장에 실패했습니다: ${errorMsg}\n\n브라우저 콘솔을 확인해주세요.`)
                       return
                     }
                     
-                    console.log('Config saved successfully:', responseData)
-                    setHomepageConfig(responseData)
+                    console.log('[Admin] Config saved successfully:', responseData)
+                    
+                    // 저장된 데이터로 상태 업데이트 (API 응답 사용, 정규화)
+                    if (responseData && responseData.title && responseData.description) {
+                      const updatedConfig = {
+                        title: responseData.title.trim(),
+                        description: responseData.description.trim(),
+                      }
+                      setHomepageConfig(updatedConfig)
+                      console.log('[Admin] State updated with saved config:', updatedConfig)
+                    } else {
+                      // API 응답이 없으면 입력한 값으로 직접 업데이트
+                      setHomepageConfig({
+                        title: titleToSave,
+                        description: descriptionToSave,
+                      })
+                      console.log('[Admin] State updated with input values')
+                    }
+                    
                     alert('홈페이지 설정이 저장되었습니다.')
+                    
+                    // 홈페이지가 열려있다면 강제로 새로고침하도록 메시지 전송
+                    if (window.opener) {
+                      window.opener.postMessage({ type: 'HOMEPAGE_CONFIG_UPDATED' }, '*')
+                    }
+                    
+                    // 로컬 스토리지에 저장 시간 기록 (다른 탭에서 감지 가능)
+                    localStorage.setItem('homepageConfigUpdated', new Date().getTime().toString())
                   } catch (error) {
-                    console.error('Failed to update homepage config:', error)
+                    console.error('[Admin] Failed to update homepage config:', error)
                     const errorMsg = error instanceof Error ? error.message : '알 수 없는 오류'
                     alert(`홈페이지 설정 저장에 실패했습니다: ${errorMsg}\n\n브라우저 콘솔을 확인해주세요.`)
                   }

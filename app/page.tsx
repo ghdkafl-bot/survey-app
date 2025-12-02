@@ -59,24 +59,10 @@ export default function Home() {
         
         console.log('[Homepage] ✅ Normalized config:', JSON.stringify(newConfig, null, 2))
         
-        // 함수형 업데이트를 사용하여 항상 최신 상태로 업데이트
-        setHomepageConfig((prevConfig) => {
-          console.log('[Homepage] 🔄 State update function called')
-          console.log('[Homepage] Previous config:', JSON.stringify(prevConfig, null, 2))
-          console.log('[Homepage] New config:', JSON.stringify(newConfig, null, 2))
-          
-          // 항상 새 설정으로 업데이트
-          if (JSON.stringify(prevConfig) !== JSON.stringify(newConfig)) {
-            console.log('[Homepage] ✅ State will be updated - Config changed')
-            console.log('[Homepage] Title:', prevConfig.title, '->', newConfig.title)
-            console.log('[Homepage] Description:', prevConfig.description, '->', newConfig.description)
-          } else {
-            console.log('[Homepage] ⚠️ State unchanged - Config is the same')
-          }
-          
-          // 항상 새 설정 반환 (강제 업데이트)
-          return newConfig
-        })
+        // 직접 상태 업데이트 (함수형 업데이트 대신)
+        // 이렇게 하면 항상 최신 값으로 업데이트됨
+        setHomepageConfig(newConfig)
+        console.log('[Homepage] ✅ State updated directly with new config')
         
         // 상태 업데이트 후 확인
         setTimeout(() => {
@@ -105,11 +91,11 @@ export default function Home() {
     fetchSurveys()
     fetchHomepageConfig(true) // 강제로 최신 데이터 가져오기
 
-    // 주기적으로 설정 다시 불러오기 (30초마다)
+    // 주기적으로 설정 다시 불러오기 (10초마다 - 더 자주 체크)
     const interval = setInterval(() => {
       console.log('[Homepage] Periodic refresh of config')
       fetchHomepageConfig(true)
-    }, 30000)
+    }, 10000)
 
     // 페이지 포커스 시 설정 다시 불러오기
     const handleFocus = () => {
@@ -125,12 +111,32 @@ export default function Home() {
       }
     }
 
+    // 관리자 페이지에서 설정이 업데이트되었을 때 메시지 수신
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'HOMEPAGE_CONFIG_UPDATED') {
+        console.log('[Homepage] Received config update message, refreshing...')
+        fetchHomepageConfig(true)
+      }
+    }
+
+    // 로컬 스토리지 변경 감지 (다른 탭에서 설정이 업데이트된 경우)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'homepageConfigUpdated') {
+        console.log('[Homepage] Detected config update in another tab, refreshing...')
+        fetchHomepageConfig(true)
+      }
+    }
+
     window.addEventListener('focus', handleFocus)
+    window.addEventListener('message', handleMessage)
+    window.addEventListener('storage', handleStorageChange)
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
       clearInterval(interval)
       window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('message', handleMessage)
+      window.removeEventListener('storage', handleStorageChange)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [fetchHomepageConfig])
