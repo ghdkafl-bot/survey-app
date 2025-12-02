@@ -569,8 +569,25 @@ export async function GET(request: NextRequest) {
         const excelData: any[] = [headers]
 
         groupResponses.forEach((response, responseIndex) => {
+          // 제출일시를 읽기 쉬운 형식으로 변환 (YYYY-MM-DD HH:mm:ss)
+          let formattedDate = response.submittedAt
+          try {
+            const date = new Date(response.submittedAt)
+            if (!isNaN(date.getTime())) {
+              const year = date.getFullYear()
+              const month = String(date.getMonth() + 1).padStart(2, '0')
+              const day = String(date.getDate()).padStart(2, '0')
+              const hours = String(date.getHours()).padStart(2, '0')
+              const minutes = String(date.getMinutes()).padStart(2, '0')
+              const seconds = String(date.getSeconds()).padStart(2, '0')
+              formattedDate = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+            }
+          } catch (e) {
+            console.warn(`[Export] Failed to format date: ${response.submittedAt}`, e)
+          }
+          
           const row: any[] = [
-            response.submittedAt,
+            formattedDate,
             response.patientName || '',
             response.patientType || '',
           ]
@@ -595,9 +612,9 @@ export async function GET(request: NextRequest) {
             })
           }
           
-          // 답변이 없는 경우 경고
+          // 답변이 없는 경우 로그 (경고가 아닌 정보로)
           if (!response.answers || response.answers.length === 0) {
-            console.warn(`[Export] Response ${response.id} has no answers!`)
+            console.log(`[Export] Response ${response.id} has no answers - will show empty cells for all questions`)
           }
 
           let matchedAnswers = 0
@@ -670,9 +687,9 @@ export async function GET(request: NextRequest) {
 
         const ws = XLSX.utils.aoa_to_sheet(excelData)
         const colWidths = headers.map(() => ({ wch: 30 }))
-        colWidths[0] = { wch: 20 }
-        colWidths[1] = { wch: 15 }
-        colWidths[2] = { wch: 15 }
+        colWidths[0] = { wch: 20 } // 제출일시 컬럼 너비 (YYYY-MM-DD HH:mm:ss 형식)
+        colWidths[1] = { wch: 15 } // 환자 성함
+        colWidths[2] = { wch: 15 } // 환자 유형
         ws['!cols'] = colWidths
         XLSX.utils.book_append_sheet(wb, ws, sanitizeSheetName(typeKey))
       })

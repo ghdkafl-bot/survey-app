@@ -431,9 +431,29 @@ export default function AdminPage() {
       const params = new URLSearchParams({ surveyId })
       if (range.from) params.set('from', range.from)
       if (range.to) params.set('to', range.to)
+      
+      console.log('[Admin] Exporting Excel:', `/api/export?${params.toString()}`)
+      
       const res = await fetch(`/api/export?${params.toString()}`)
-      if (!res.ok) throw new Error('Export failed')
+      
+      console.log('[Admin] Export response status:', res.status, res.statusText)
+      console.log('[Admin] Export response headers:', Object.fromEntries(res.headers.entries()))
+      
+      if (!res.ok) {
+        const errorText = await res.text()
+        console.error('[Admin] Export failed:', errorText)
+        throw new Error(`Export failed: ${res.status} ${res.statusText}`)
+      }
+      
       const blob = await res.blob()
+      console.log('[Admin] Export blob size:', blob.size, 'bytes')
+      console.log('[Admin] Export blob type:', blob.type)
+      
+      if (blob.size === 0) {
+        alert('다운로드된 Excel 파일이 비어있습니다. 서버 로그를 확인해주세요.')
+        return
+      }
+      
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -442,9 +462,12 @@ export default function AdminPage() {
       a.click()
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
+      
+      console.log('[Admin] Excel download completed')
     } catch (error) {
-      console.error('Export error:', error)
-      alert('엑셀 다운로드에 실패했습니다.')
+      console.error('[Admin] Export error:', error)
+      const errorMsg = error instanceof Error ? error.message : '알 수 없는 오류'
+      alert(`엑셀 다운로드에 실패했습니다: ${errorMsg}\n\n브라우저 콘솔을 확인해주세요.`)
     }
   }
 

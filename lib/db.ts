@@ -658,44 +658,68 @@ export const db = {
     const supabase = getSupabaseServiceClient()
     console.log(`[DB] getResponsesBySurvey - surveyId: ${surveyId}`)
     
-    const { data, error } = await supabase
+    // 1단계: responses 테이블에서 기본 정보 조회
+    const { data: responsesData, error: responsesError } = await supabase
       .from('responses')
-      .select(
-        'id, survey_id, patient_name, patient_type, patient_info_answers, submitted_at, question_snapshot, answers (id, question_id, sub_question_id, value, text_value)'
-      )
+      .select('id, survey_id, patient_name, patient_type, patient_info_answers, submitted_at, question_snapshot')
       .eq('survey_id', surveyId)
       .order('submitted_at', { ascending: true })
 
-    if (error) {
-      console.error(`[DB] getResponsesBySurvey - Error:`, error)
+    if (responsesError) {
+      console.error(`[DB] getResponsesBySurvey - Error fetching responses:`, responsesError)
       return []
     }
     
-    if (!data) {
-      console.log(`[DB] getResponsesBySurvey - No data returned`)
+    if (!responsesData || responsesData.length === 0) {
+      console.log(`[DB] getResponsesBySurvey - No responses found`)
       return []
     }
     
-    console.log(`[DB] getResponsesBySurvey - Found ${data.length} responses`)
+    console.log(`[DB] getResponsesBySurvey - Found ${responsesData.length} responses`)
     
-    if (data.length > 0) {
-      console.log(`[DB] getResponsesBySurvey - Sample record:`, {
-        id: data[0].id,
-        survey_id: data[0].survey_id,
-        answers: data[0].answers?.length || 0,
-        answers_data: data[0].answers?.slice(0, 2) || [],
+    // 2단계: 각 response의 answers를 별도로 조회
+    const responseIds = responsesData.map(r => r.id)
+    const { data: answersData, error: answersError } = await supabase
+      .from('answers')
+      .select('id, response_id, question_id, sub_question_id, value, text_value')
+      .in('response_id', responseIds)
+      .order('id', { ascending: true })
+    
+    if (answersError) {
+      console.error(`[DB] getResponsesBySurvey - Error fetching answers:`, answersError)
+    } else {
+      console.log(`[DB] getResponsesBySurvey - Found ${answersData?.length || 0} answers`)
+    }
+    
+    // 3단계: response별로 answers 그룹화
+    const answersByResponseId = new Map<string, any[]>()
+    if (answersData) {
+      answersData.forEach((answer: any) => {
+        const responseId = answer.response_id
+        if (!answersByResponseId.has(responseId)) {
+          answersByResponseId.set(responseId, [])
+        }
+        answersByResponseId.get(responseId)!.push(answer)
       })
     }
     
-    const mapped = data.map((record: any) => {
+    // 4단계: responses와 answers를 결합하여 매핑
+    const mapped = responsesData.map((record: any) => {
       try {
+        // 해당 response의 answers 가져오기
+        const responseAnswers = answersByResponseId.get(record.id) || []
+        
         const mappedRecord = mapResponseRecord({
           ...record,
+          answers: responseAnswers, // 별도로 조회한 answers 사용
           patient_info_answers:
             typeof record.patient_info_answers === 'string'
               ? JSON.parse(record.patient_info_answers)
               : record.patient_info_answers,
         })
+        
+        console.log(`[DB] getResponsesBySurvey - Response ${record.id} has ${mappedRecord.answers.length} answers`)
+        
         return mappedRecord
       } catch (err) {
         console.error(`[DB] getResponsesBySurvey - Mapping error for record ${record.id}:`, err)
@@ -704,6 +728,10 @@ export const db = {
     }).filter((r): r is Response => r !== null)
     
     console.log(`[DB] getResponsesBySurvey - Mapped ${mapped.length} responses`)
+    
+    // 전체 답변 수 확인
+    const totalAnswers = mapped.reduce((sum, r) => sum + r.answers.length, 0)
+    console.log(`[DB] getResponsesBySurvey - Total answers across all responses: ${totalAnswers}`)
     
     return mapped
   },
