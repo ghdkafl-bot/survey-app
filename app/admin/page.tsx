@@ -95,9 +95,11 @@ export default function AdminPage() {
     }
   }, [])
   
-  // 페이지 포커스 시 홈페이지 설정 다시 불러오기
+  // 페이지 포커스 시 홈페이지 설정 다시 불러오기 (저장 중이 아닐 때만)
+  const [isSaving, setIsSaving] = useState(false)
+  
   useEffect(() => {
-    if (!isAuthenticated) return
+    if (!isAuthenticated || isSaving) return
     
     const handleFocus = () => {
       console.log('[Admin] Window focused, refreshing homepage config')
@@ -105,7 +107,7 @@ export default function AdminPage() {
     }
     
     const handleVisibilityChange = () => {
-      if (!document.hidden) {
+      if (!document.hidden && !isSaving) {
         console.log('[Admin] Page visible, refreshing homepage config')
         fetchHomepageConfig()
       }
@@ -113,7 +115,7 @@ export default function AdminPage() {
     
     // 로컬 스토리지 변경 감지 (다른 탭에서 설정이 업데이트된 경우)
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'homepageConfigUpdated') {
+      if (e.key === 'homepageConfigUpdated' && !isSaving) {
         console.log('[Admin] Detected config update in another tab, refreshing...')
         fetchHomepageConfig()
       }
@@ -128,7 +130,7 @@ export default function AdminPage() {
       window.removeEventListener('storage', handleStorageChange)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated, isSaving])
 
   const fetchHomepageConfig = async () => {
     try {
@@ -1454,10 +1456,17 @@ export default function AdminPage() {
                     return
                   }
                   
+                  if (isSaving) {
+                    console.log('[Admin] Already saving, ignoring duplicate request')
+                    return
+                  }
+                  
                   const titleToSave = homepageConfig.title.trim()
                   const descriptionToSave = homepageConfig.description.trim()
                   
                   console.log('[Admin] Saving homepage config:', { title: titleToSave, description: descriptionToSave })
+                  
+                  setIsSaving(true)
                   
                   try {
                     // 캐시 무효화를 위해 timestamp 추가
@@ -1488,51 +1497,34 @@ export default function AdminPage() {
                     
                     console.log('[Admin] Config saved successfully:', responseData)
                     
-                    // 저장된 데이터로 상태 즉시 업데이트 (API 응답 우선 사용)
+                    // 저장된 데이터로 상태 즉시 업데이트 (입력한 값 우선 사용)
+                    // API 응답이 올바르지 않을 수 있으므로 입력한 값을 직접 사용
+                    const updatedConfig = {
+                      title: titleToSave,
+                      description: descriptionToSave,
+                    }
+                    setHomepageConfig(updatedConfig)
+                    console.log('[Admin] State updated immediately with input values:', updatedConfig)
+                    
+                    // API 응답도 확인하여 로그만 남김 (상태는 덮어쓰지 않음)
                     if (responseData && responseData.title && responseData.description) {
-                      const updatedConfig = {
+                      const apiConfig = {
                         title: responseData.title.trim(),
                         description: responseData.description.trim(),
                       }
-                      setHomepageConfig(updatedConfig)
-                      console.log('[Admin] State updated immediately with API response:', updatedConfig)
-                    } else {
-                      // API 응답이 없으면 입력한 값으로 직접 업데이트
-                      setHomepageConfig({
-                        title: titleToSave,
-                        description: descriptionToSave,
-                      })
-                      console.log('[Admin] State updated with input values (no API response)')
-                    }
-                    
-                    // 저장 후 짧은 지연 후 서버에서 최신 데이터 다시 가져오기 (확인용)
-                    setTimeout(async () => {
-                      try {
-                        const verifyTimestamp = new Date().getTime()
-                        const verifyRes = await fetch(`/api/homepage-config?t=${verifyTimestamp}`, {
-                          method: 'GET',
-                          cache: 'no-store',
-                          headers: {
-                            'Cache-Control': 'no-cache, no-store, must-revalidate',
-                            'Pragma': 'no-cache',
-                          },
+                      console.log('[Admin] API response config:', apiConfig)
+                      
+                      // API 응답과 입력값이 다르면 경고
+                      if (apiConfig.title !== titleToSave || apiConfig.description !== descriptionToSave) {
+                        console.warn('[Admin] ⚠️ API response differs from input values!', {
+                          input: { title: titleToSave, description: descriptionToSave },
+                          api: apiConfig,
                         })
-                        if (verifyRes.ok) {
-                          const verifyData = await verifyRes.json()
-                          console.log('[Admin] Verified saved config from server (after delay):', verifyData)
-                          // 서버에서 가져온 데이터로 상태 업데이트 (최신 데이터 보장)
-                          if (verifyData && verifyData.title && verifyData.description) {
-                            setHomepageConfig({
-                              title: verifyData.title.trim(),
-                              description: verifyData.description.trim(),
-                            })
-                            console.log('[Admin] State updated with verified config from server')
-                          }
-                        }
-                      } catch (verifyError) {
-                        console.warn('[Admin] Failed to verify saved config:', verifyError)
+                        // API 응답이 다르면 API 응답으로 업데이트 (서버에 저장된 값이 정확할 수 있음)
+                        setHomepageConfig(apiConfig)
+                        console.log('[Admin] State updated with API response (different from input)')
                       }
-                    }, 500) // 500ms 후 검증
+                    }
                     
                     alert('홈페이지 설정이 저장되었습니다.')
                     
@@ -1547,6 +1539,12 @@ export default function AdminPage() {
                     console.error('[Admin] Failed to update homepage config:', error)
                     const errorMsg = error instanceof Error ? error.message : '알 수 없는 오류'
                     alert(`홈페이지 설정 저장에 실패했습니다: ${errorMsg}\n\n브라우저 콘솔을 확인해주세요.`)
+                  } finally {
+                    // 저장 완료 후 잠시 대기 후 isSaving 해제 (다른 이벤트가 상태를 덮어쓰지 않도록)
+                    setTimeout(() => {
+                      setIsSaving(false)
+                      console.log('[Admin] Saving flag cleared')
+                    }, 2000) // 2초 후 해제
                   }
                 }}
                 className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-semibold transition-colors"
