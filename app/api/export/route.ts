@@ -101,7 +101,31 @@ export async function GET(request: NextRequest) {
       !from && !to ? true : isWithinRange(response.submittedAt, from, to)
     )
     
-    console.log(`[Export] Filtered responses: ${responses.length}`)
+    console.log(`[Export] Filtered responses: ${responses.length} out of ${allResponses.length}`)
+    
+    // 필터링된 응답의 환자 유형 분포 확인
+    const filteredPatientTypes = new Map<string, number>()
+    responses.forEach((response) => {
+      const type = response.patientType || 'null'
+      filteredPatientTypes.set(type, (filteredPatientTypes.get(type) || 0) + 1)
+    })
+    console.log(`[Export] Filtered responses by patient type:`, Array.from(filteredPatientTypes.entries()))
+    
+    // "종합검진" 환자 유형이 있는지 확인
+    const 종합검진Responses = responses.filter(r => {
+      const type = r.patientType || ''
+      return type === '종합검진' || type.trim() === '종합검진'
+    })
+    console.log(`[Export] 종합검진 responses count: ${종합검진Responses.length}`)
+    if (종합검진Responses.length > 0) {
+      console.log(`[Export] First 종합검진 response:`, {
+        id: 종합검진Responses[0].id,
+        patientType: 종합검진Responses[0].patientType,
+        submittedAt: 종합검진Responses[0].submittedAt,
+        answersCount: 종합검진Responses[0].answers?.length || 0,
+        answers: 종합검진Responses[0].answers?.slice(0, 3),
+      })
+    }
 
     // 답변 데이터에서 실제 질문 ID를 수집
     const allAnswerQuestionIds = new Set<string>()
@@ -470,14 +494,49 @@ export async function GET(request: NextRequest) {
     })
 
 
+    // 환자 유형별로 그룹화
     const grouped = new Map<string, typeof responses>()
+    const patientTypeCounts = new Map<string, number>()
+    
     responses.forEach((response) => {
-      const typeKey = response.patientType || '미입력'
+      // 환자 유형 정규화 (공백 제거)
+      const typeKey = (response.patientType || '미입력').trim()
       if (!grouped.has(typeKey)) {
         grouped.set(typeKey, [])
+        patientTypeCounts.set(typeKey, 0)
       }
       grouped.get(typeKey)!.push(response)
+      patientTypeCounts.set(typeKey, (patientTypeCounts.get(typeKey) || 0) + 1)
     })
+    
+    console.log(`[Export] Grouped by patient type:`, Array.from(patientTypeCounts.entries()).map(([type, count]) => `${type}: ${count}`))
+    console.log(`[Export] All patient types in responses:`, Array.from(new Set(responses.map(r => (r.patientType || 'null').trim()))))
+    
+    // "종합검진" 그룹이 있는지 확인
+    if (grouped.has('종합검진')) {
+      const 종합검진Group = grouped.get('종합검진')!
+      console.log(`[Export] 종합검진 group has ${종합검진Group.length} responses`)
+      if (종합검진Group.length > 0) {
+        console.log(`[Export] First 종합검진 response in group:`, {
+          id: 종합검진Group[0].id,
+          patientType: 종합검진Group[0].patientType,
+          submittedAt: 종합검진Group[0].submittedAt,
+          answersCount: 종합검진Group[0].answers?.length || 0,
+          answers: 종합검진Group[0].answers?.slice(0, 3),
+        })
+      }
+    } else {
+      console.warn(`[Export] 종합검진 group not found! Available groups:`, Array.from(grouped.keys()))
+      // 환자 유형에 공백이 있을 수 있으므로 확인
+      const 종합검진WithSpace = responses.filter(r => {
+        const type = (r.patientType || '').trim()
+        return type === '종합검진' || type.includes('종합검진')
+      })
+      if (종합검진WithSpace.length > 0) {
+        console.warn(`[Export] Found ${종합검진WithSpace.length} responses with "종합검진" in patient type (with spaces):`, 
+          종합검진WithSpace.map(r => ({ id: r.id, patientType: `"${r.patientType}"` })))
+      }
+    }
 
     const wb = XLSX.utils.book_new()
 
@@ -487,6 +546,7 @@ export async function GET(request: NextRequest) {
       XLSX.utils.book_append_sheet(wb, ws, sanitizeSheetName('응답없음'))
     } else {
       grouped.forEach((groupResponses, typeKey) => {
+        console.log(`[Export] Processing sheet "${typeKey}" with ${groupResponses.length} responses`)
         const excelData: any[] = [headers]
 
         groupResponses.forEach((response, responseIndex) => {
