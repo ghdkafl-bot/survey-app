@@ -18,15 +18,20 @@ export async function GET(request: NextRequest) {
       throw new Error('Invalid config format received from database')
     }
     
+    // 응답에 ETag 추가하여 캐시 무효화 강화
+    const etag = `"${Date.now()}-${Math.random()}"`
+    
     const response = NextResponse.json(config, {
       status: 200,
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, private',
         'Pragma': 'no-cache',
         'Expires': '0',
+        'ETag': etag,
         'X-Content-Type-Options': 'nosniff',
         'Content-Type': 'application/json; charset=utf-8',
         'Last-Modified': new Date().toUTCString(),
+        'X-Timestamp': new Date().getTime().toString(),
       },
     })
     

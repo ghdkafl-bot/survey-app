@@ -27,10 +27,12 @@ export default function Home() {
         method: 'GET',
         cache: 'no-store',
         headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
           'Pragma': 'no-cache',
           'Expires': '0',
           'X-Requested-With': 'XMLHttpRequest',
+          'If-None-Match': '*', // ETag 무효화
+          'X-Timestamp': new Date().getTime().toString(), // 타임스탬프 추가
         },
         credentials: 'same-origin',
       })
@@ -58,16 +60,32 @@ export default function Home() {
         }
         
         console.log('[Homepage] ✅ Normalized config:', JSON.stringify(newConfig, null, 2))
+        console.log('[Homepage] Current state before update:', JSON.stringify(homepageConfig, null, 2))
         
-        // 직접 상태 업데이트 (함수형 업데이트 대신)
-        // 이렇게 하면 항상 최신 값으로 업데이트됨
-        setHomepageConfig(newConfig)
-        console.log('[Homepage] ✅ State updated directly with new config')
+        // 상태가 다를 때만 업데이트 (불필요한 리렌더링 방지)
+        const currentTitle = homepageConfig?.title || ''
+        const currentDescription = homepageConfig?.description || ''
+        
+        // 항상 상태 업데이트 (강제 업데이트)
+        console.log('[Homepage] 🔄 Updating state with new config...')
+        console.log('[Homepage] Current title:', currentTitle)
+        console.log('[Homepage] New title:', newConfig.title)
+        console.log('[Homepage] Current description:', currentDescription.substring(0, 50) + '...')
+        console.log('[Homepage] New description:', newConfig.description.substring(0, 50) + '...')
+        
+        // 직접 상태 업데이트 (항상 업데이트)
+        setHomepageConfig((prev) => {
+          console.log('[Homepage] State update function called')
+          console.log('[Homepage] Previous config:', JSON.stringify(prev, null, 2))
+          console.log('[Homepage] New config:', JSON.stringify(newConfig, null, 2))
+          return newConfig
+        })
+        console.log('[Homepage] ✅ State update triggered')
         
         // 상태 업데이트 후 확인
         setTimeout(() => {
-          console.log('[Homepage] ⏰ After state update - Config should be:', JSON.stringify(newConfig, null, 2))
-        }, 50)
+          console.log('[Homepage] ⏰ After state update - Expected config:', JSON.stringify(newConfig, null, 2))
+        }, 100)
       } else {
         console.warn('[Homepage] ❌ Invalid data format:', data)
         console.warn('[Homepage] Data type:', typeof data)
@@ -91,11 +109,11 @@ export default function Home() {
     fetchSurveys()
     fetchHomepageConfig(true) // 강제로 최신 데이터 가져오기
 
-    // 주기적으로 설정 다시 불러오기 (10초마다 - 더 자주 체크)
+    // 주기적으로 설정 다시 불러오기 (5초마다 - 더 자주 체크)
     const interval = setInterval(() => {
       console.log('[Homepage] Periodic refresh of config')
       fetchHomepageConfig(true)
-    }, 10000)
+    }, 5000)
 
     // 페이지 포커스 시 설정 다시 불러오기
     const handleFocus = () => {
@@ -178,10 +196,10 @@ export default function Home() {
         <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-lg p-6 sm:p-8 space-y-6">
           <header className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-gray-800">
+              <h1 className="text-3xl sm:text-4xl font-bold text-gray-800" key={`title-${homepageConfig?.title || ''}`}>
                 {homepageConfig?.title || DEFAULT_HOMEPAGE_CONFIG.title}
               </h1>
-              <p className="text-sm sm:text-base text-gray-600 mt-2">
+              <p className="text-sm sm:text-base text-gray-600 mt-2" key={`desc-${homepageConfig?.description || ''}`}>
                 {homepageConfig?.description || DEFAULT_HOMEPAGE_CONFIG.description}
               </p>
             </div>
