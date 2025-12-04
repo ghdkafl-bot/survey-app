@@ -71,10 +71,25 @@ export async function GET(request: NextRequest) {
     console.log(`[Export] Current server time: ${new Date().toISOString()}`)
     
     // 실시간 데이터를 보장하기 위해 최신 데이터 조회
+    // 약간의 지연을 추가하여 최신 데이터가 완전히 저장되도록 보장
     const fetchStartTime = Date.now()
     console.log(`[Export] Starting data fetch at ${new Date(fetchStartTime).toISOString()}`)
     
+    // 최신 데이터가 완전히 저장되도록 약간의 지연 추가 (100ms)
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
     const allResponses = await db.getResponsesBySurvey(surveyId)
+    
+    console.log(`[Export] 🔍 Verification: Fetched ${allResponses.length} responses`)
+    if (allResponses.length > 0) {
+      const latestResponse = allResponses[0]
+      console.log(`[Export] 🔍 Latest response in fetched data:`, {
+        id: latestResponse.id,
+        submittedAt: latestResponse.submittedAt,
+        patientName: latestResponse.patientName,
+        patientType: latestResponse.patientType,
+      })
+    }
     
     const fetchEndTime = Date.now()
     console.log(`[Export] ✅ Data fetch completed in ${fetchEndTime - fetchStartTime}ms`)

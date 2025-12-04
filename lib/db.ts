@@ -733,6 +733,15 @@ export const db = {
       console.log(`[DB] ⚠️ Current server time: ${new Date().toISOString()}`)
       console.log(`[DB] ⚠️ Total responses fetched from Supabase: ${responsesData.length}`)
       
+      // 최신 5개 응답 ID와 날짜 확인
+      const recent5 = responsesData.slice(0, 5).map(r => ({
+        id: r.id,
+        submittedAt: r.submitted_at,
+        patientName: r.patient_name,
+        patientType: r.patient_type,
+      }))
+      console.log(`[DB] ⚠️ Recent 5 responses:`, recent5)
+      
       // 만약 조회된 최신 응답이 1시간 이상 오래되었다면 경고
       const latestDate = new Date(latestInQuery)
       const now = new Date()
