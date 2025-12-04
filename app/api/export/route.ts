@@ -855,7 +855,7 @@ export async function GET(request: NextRequest) {
           let matchedAnswers = 0
           sortedDescriptors.forEach((desc, descIndex) => {
             // 답변 찾기: questionId와 subQuestionId로 정확히 매칭
-            const answer = response.answers?.find((a) => {
+            const answer = response.answers?.find((a: Answer) => {
               const questionMatch = a.questionId === desc.questionId
               if (desc.subQuestionId) {
                 return questionMatch && a.subQuestionId === desc.subQuestionId
@@ -930,7 +930,7 @@ export async function GET(request: NextRequest) {
             if (matchedAnswers > 0) {
               console.log(`[Export] Matched answers details:`, 
                 sortedDescriptors.slice(0, 10).map((desc, idx) => {
-                  const answer = response.answers?.find((a) => {
+                  const answer = response.answers?.find((a: Answer) => {
                     const questionMatch = a.questionId === desc.questionId
                     if (desc.subQuestionId) {
                       return questionMatch && a.subQuestionId === desc.subQuestionId
