@@ -150,6 +150,36 @@ export async function GET(request: NextRequest) {
     
     // 필터링 후 최신 응답 확인
     if (responses.length > 0) {
+      const filteredDates = responses.map(r => r.submittedAt).sort()
+      const filteredLatestDate = filteredDates[filteredDates.length - 1]
+      const filteredOldestDate = filteredDates[0]
+      console.log(`[Export] ⚠️ FILTERED - Latest response date: ${filteredLatestDate}`)
+      console.log(`[Export] ⚠️ FILTERED - Oldest response date: ${filteredOldestDate}`)
+      console.log(`[Export] ⚠️ FILTERED - Date range: ${filteredOldestDate} ~ ${filteredLatestDate}`)
+      
+      // 필터링 전과 비교
+      if (allResponses.length > 0) {
+        const allDates = allResponses.map(r => r.submittedAt).sort()
+        const allLatestDate = allDates[allDates.length - 1]
+        console.log(`[Export] ⚠️ BEFORE FILTER - Latest response date: ${allLatestDate}`)
+        
+        if (filteredLatestDate !== allLatestDate) {
+          console.warn(`[Export] ⚠️⚠️⚠️ WARNING: Latest response was filtered out!`)
+          console.warn(`[Export]   - Before filter: ${allLatestDate}`)
+          console.warn(`[Export]   - After filter: ${filteredLatestDate}`)
+          console.warn(`[Export]   - Filter criteria: from=${from || 'none'}, to=${to || 'none'}`)
+        }
+      }
+    } else if (allResponses.length > 0) {
+      console.error(`[Export] ❌ ERROR: All responses were filtered out!`)
+      console.error(`[Export]   - Total responses before filter: ${allResponses.length}`)
+      console.error(`[Export]   - Filter criteria: from=${from || 'none'}, to=${to || 'none'}`)
+      const allDates = allResponses.map(r => r.submittedAt).sort()
+      console.error(`[Export]   - Date range in DB: ${allDates[0]} ~ ${allDates[allDates.length - 1]}`)
+    }
+    
+    // 필터링 후 최신 응답 확인
+    if (responses.length > 0) {
       const filteredLatest = responses[0] // 최신 응답
       const filteredOldest = responses[responses.length - 1] // 가장 오래된 응답
       console.log(`[Export] Filtered - Latest response:`, {

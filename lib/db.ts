@@ -663,6 +663,8 @@ export const db = {
     const queryStartTime = Date.now()
     console.log(`[DB] getResponsesBySurvey - Query start time: ${new Date(queryStartTime).toISOString()}`)
     
+    // 실시간 데이터를 보장하기 위해 항상 최신 데이터를 조회
+    // 캐시를 피하기 위해 타임스탬프를 쿼리에 포함하지 않고, 직접 조회
     const { data: responsesData, error: responsesError } = await supabase
       .from('responses')
       .select('id, survey_id, patient_name, patient_type, patient_info_answers, submitted_at, question_snapshot')
@@ -678,11 +680,35 @@ export const db = {
     }
     
     if (!responsesData || responsesData.length === 0) {
-      console.log(`[DB] getResponsesBySurvey - No responses found`)
+      console.log(`[DB] getResponsesBySurvey - No responses found for surveyId: ${surveyId}`)
       return []
     }
     
     console.log(`[DB] getResponsesBySurvey - Found ${responsesData.length} responses`)
+    
+    // 실시간 데이터 확인 - 조회된 데이터의 최신 응답 날짜
+    if (responsesData.length > 0) {
+      const latestInQuery = responsesData[0].submitted_at
+      const allDates = responsesData.map(r => r.submitted_at).sort()
+      const oldestInQuery = allDates[0]
+      
+      console.log(`[DB] ⚠️ Latest response date in Supabase query: ${latestInQuery}`)
+      console.log(`[DB] ⚠️ Oldest response date in Supabase query: ${oldestInQuery}`)
+      console.log(`[DB] ⚠️ Current server time: ${new Date().toISOString()}`)
+      
+      // 만약 조회된 최신 응답이 1시간 이상 오래되었다면 경고
+      const latestDate = new Date(latestInQuery)
+      const now = new Date()
+      const hoursDiff = (now.getTime() - latestDate.getTime()) / (1000 * 60 * 60)
+      if (hoursDiff > 24) {
+        console.warn(`[DB] ⚠️ WARNING: Latest response is ${hoursDiff.toFixed(2)} hours old!`)
+        console.warn(`[DB] This might indicate missing data in Supabase.`)
+      }
+      
+      // 최근 5개 응답 날짜 확인
+      const recentDates = allDates.slice(-5)
+      console.log(`[DB] Recent 5 response dates:`, recentDates)
+    }
     
     // 최신 응답 확인
     if (responsesData.length > 0) {
