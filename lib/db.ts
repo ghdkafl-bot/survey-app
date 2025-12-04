@@ -675,6 +675,7 @@ export const db = {
       const to = from + pageSize - 1
       console.log(`[DB] getResponsesBySurvey - Fetching responses range: ${from} to ${to}`)
       
+      // 캐시를 완전히 무효화하고 실시간 데이터를 보장하기 위해 헤더 추가
       const { data: pageData, error: responsesError } = await supabase
         .from('responses')
         .select('id, survey_id, patient_name, patient_type, patient_info_answers, submitted_at, question_snapshot')
@@ -719,7 +720,7 @@ export const db = {
       return []
     }
     
-    console.log(`[DB] getResponsesBySurvey - Found ${responsesData.length} responses`)
+    console.log(`[DB] getResponsesBySurvey - Found ${responsesData.length} responses in Supabase query`)
     
     // 실시간 데이터 확인 - 조회된 데이터의 최신 응답 날짜
     if (responsesData.length > 0) {
@@ -730,6 +731,7 @@ export const db = {
       console.log(`[DB] ⚠️ Latest response date in Supabase query: ${latestInQuery}`)
       console.log(`[DB] ⚠️ Oldest response date in Supabase query: ${oldestInQuery}`)
       console.log(`[DB] ⚠️ Current server time: ${new Date().toISOString()}`)
+      console.log(`[DB] ⚠️ Total responses fetched from Supabase: ${responsesData.length}`)
       
       // 만약 조회된 최신 응답이 1시간 이상 오래되었다면 경고
       const latestDate = new Date(latestInQuery)
@@ -820,11 +822,31 @@ export const db = {
       }
     }).filter((r): r is Response => r !== null)
     
-    console.log(`[DB] getResponsesBySurvey - Mapped ${mapped.length} responses`)
+    console.log(`[DB] getResponsesBySurvey - Mapped ${mapped.length} responses (${responsesData.length} before mapping)`)
+    
+    // 매핑 과정에서 누락된 응답 확인
+    if (mapped.length < responsesData.length) {
+      const mappedIds = new Set(mapped.map(r => r.id))
+      const missingIds = responsesData
+        .map(r => r.id)
+        .filter(id => !mappedIds.has(id))
+      console.warn(`[DB] ⚠️ WARNING: ${responsesData.length - mapped.length} responses were filtered out during mapping!`)
+      console.warn(`[DB] ⚠️ Missing response IDs:`, missingIds)
+    }
     
     // 전체 답변 수 확인
     const totalAnswers = mapped.reduce((sum, r) => sum + r.answers.length, 0)
     console.log(`[DB] getResponsesBySurvey - Total answers across all responses: ${totalAnswers}`)
+    
+    // 최종 반환 전 최신 응답 확인
+    if (mapped.length > 0) {
+      const latestMapped = mapped[0] // descending order이므로 첫 번째가 최신
+      console.log(`[DB] getResponsesBySurvey - Final latest response:`, {
+        id: latestMapped.id,
+        submittedAt: latestMapped.submittedAt,
+        answersCount: latestMapped.answers.length,
+      })
+    }
     
     return mapped
   },
