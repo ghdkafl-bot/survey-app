@@ -75,11 +75,31 @@ export async function GET(request: NextRequest) {
     const fetchStartTime = Date.now()
     console.log(`[Export] Starting data fetch at ${new Date(fetchStartTime).toISOString()}`)
     
-    // 최신 데이터가 완전히 저장되도록 약간의 지연 추가 (500ms로 증가)
-    await new Promise(resolve => setTimeout(resolve, 500))
+    // 최신 데이터가 완전히 저장되도록 약간의 지연 추가 (1초로 증가)
+    await new Promise(resolve => setTimeout(resolve, 1000))
     
-    console.log(`[Export] 🔄 Calling getResponsesBySurvey at ${new Date().toISOString()}`)
-    const allResponses = await db.getResponsesBySurvey(surveyId)
+    // 최신 데이터를 확실히 가져오기 위해 여러 번 조회하고 최대값 사용
+    let allResponses: any[] = []
+    let maxCount = 0
+    
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      console.log(`[Export] 🔄 Attempt ${attempt}: Calling getResponsesBySurvey at ${new Date().toISOString()}`)
+      const responses = await db.getResponsesBySurvey(surveyId)
+      console.log(`[Export] 🔍 Attempt ${attempt} returned ${responses.length} responses`)
+      
+      if (responses.length > maxCount) {
+        maxCount = responses.length
+        allResponses = responses
+        console.log(`[Export] ✅ Updated to ${maxCount} responses (attempt ${attempt})`)
+      }
+      
+      // 마지막 시도가 아니면 잠시 대기
+      if (attempt < 3) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+      }
+    }
+    
+    console.log(`[Export] ✅ Final: Using ${allResponses.length} responses (after ${3} attempts)`)
     
     console.log(`[Export] 🔍 Verification: Fetched ${allResponses.length} responses`)
     if (allResponses.length > 0) {
