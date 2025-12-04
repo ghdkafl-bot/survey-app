@@ -656,14 +656,21 @@ export const db = {
 
   getResponsesBySurvey: async (surveyId: string): Promise<Response[]> => {
     const supabase = getSupabaseServiceClient()
-    console.log(`[DB] getResponsesBySurvey - surveyId: ${surveyId}`)
+    console.log(`[DB] getResponsesBySurvey - surveyId: ${surveyId} (timestamp: ${Date.now()})`)
     
-    // 1단계: responses 테이블에서 기본 정보 조회 (최신 데이터부터)
+    // 1단계: responses 테이블에서 기본 정보 조회 (최신 데이터부터, 실시간)
+    // 실시간 데이터를 보장하기 위해 항상 최신 데이터를 조회
+    const queryStartTime = Date.now()
+    console.log(`[DB] getResponsesBySurvey - Query start time: ${new Date(queryStartTime).toISOString()}`)
+    
     const { data: responsesData, error: responsesError } = await supabase
       .from('responses')
       .select('id, survey_id, patient_name, patient_type, patient_info_answers, submitted_at, question_snapshot')
       .eq('survey_id', surveyId)
       .order('submitted_at', { ascending: false }) // 최신 데이터부터 가져오기
+    
+    const queryEndTime = Date.now()
+    console.log(`[DB] getResponsesBySurvey - Query executed in ${queryEndTime - queryStartTime}ms`)
 
     if (responsesError) {
       console.error(`[DB] getResponsesBySurvey - Error fetching responses:`, responsesError)
@@ -700,8 +707,10 @@ export const db = {
       console.log(`[DB] getResponsesBySurvey - Total unique dates: ${new Set(dates).size}`)
     }
     
-    // 2단계: 각 response의 answers를 별도로 조회
+    // 2단계: 각 response의 answers를 별도로 조회 (캐시 무효화)
     const responseIds = responsesData.map(r => r.id)
+    console.log(`[DB] getResponsesBySurvey - Fetching answers for ${responseIds.length} responses (timestamp: ${Date.now()})`)
+    
     const { data: answersData, error: answersError } = await supabase
       .from('answers')
       .select('id, response_id, question_id, sub_question_id, value, text_value')

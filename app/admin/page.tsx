@@ -483,14 +483,57 @@ export default function AdminPage() {
 
   const handleExport = async (surveyId: string) => {
     try {
+      // 엑셀 다운로드 전에 최신 응답 정보 확인
+      console.log('[Admin] 🔍 Checking latest responses before export...')
+      try {
+        const responsesRes = await fetch(`/api/responses?surveyId=${surveyId}`, { cache: 'no-store' })
+        if (responsesRes.ok) {
+          const responses = await responsesRes.json()
+          if (responses && responses.length > 0) {
+            const latestResponse = responses[0]
+            const allDates = responses.map((r: any) => r.submittedAt).sort()
+            const latestDate = allDates[allDates.length - 1]
+            const oldestDate = allDates[0]
+            
+            console.log('[Admin] 📊 Latest response info from Supabase:')
+            console.log('[Admin]   - Total responses:', responses.length)
+            console.log('[Admin]   - Latest response date:', latestDate)
+            console.log('[Admin]   - Oldest response date:', oldestDate)
+            console.log('[Admin]   - Latest response details:', {
+              id: latestResponse.id,
+              submittedAt: latestResponse.submittedAt,
+              patientName: latestResponse.patientName,
+              patientType: latestResponse.patientType,
+              answersCount: latestResponse.answers?.length || 0,
+            })
+          } else {
+            console.warn('[Admin] ⚠️ No responses found in Supabase')
+          }
+        }
+      } catch (err) {
+        console.error('[Admin] Failed to fetch latest responses:', err)
+      }
+      
       const range = exportRanges[surveyId] || { from: '', to: '' }
       const params = new URLSearchParams({ surveyId })
       if (range.from) params.set('from', range.from)
       if (range.to) params.set('to', range.to)
       
+      // 캐시 무효화를 위해 타임스탬프 추가
+      params.append('_t', Date.now().toString())
+      
       console.log('[Admin] Exporting Excel:', `/api/export?${params.toString()}`)
       
-      const res = await fetch(`/api/export?${params.toString()}`)
+      const res = await fetch(`/api/export?${params.toString()}`, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      })
       
       console.log('[Admin] Export response status:', res.status, res.statusText)
       console.log('[Admin] Export response headers:', Object.fromEntries(res.headers.entries()))
@@ -504,6 +547,15 @@ export default function AdminPage() {
       const blob = await res.blob()
       console.log('[Admin] Export blob size:', blob.size, 'bytes')
       console.log('[Admin] Export blob type:', blob.type)
+      
+      // 응답 헤더에서 최신 응답 정보 확인 (있다면)
+      const latestDateHeader = res.headers.get('X-Latest-Response-Date')
+      const totalResponsesHeader = res.headers.get('X-Total-Responses')
+      if (latestDateHeader) {
+        console.log('[Admin] 📊 Excel file info from server:')
+        console.log('[Admin]   - Latest response date in Excel:', latestDateHeader)
+        console.log('[Admin]   - Total responses in Excel:', totalResponsesHeader || 'N/A')
+      }
       
       if (blob.size === 0) {
         alert('다운로드된 Excel 파일이 비어있습니다. 서버 로그를 확인해주세요.')
@@ -519,7 +571,30 @@ export default function AdminPage() {
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
       
-      console.log('[Admin] Excel download completed')
+      console.log('[Admin] ✅ Excel download completed')
+      
+      // 다운로드 후 다시 한번 최신 응답 확인
+      console.log('[Admin] 🔍 Verifying latest responses after export...')
+      try {
+        const verifyRes = await fetch(`/api/responses?surveyId=${surveyId}`, { cache: 'no-store' })
+        if (verifyRes.ok) {
+          const verifyResponses = await verifyRes.json()
+          if (verifyResponses && verifyResponses.length > 0) {
+            const verifyDates = verifyResponses.map((r: any) => r.submittedAt).sort()
+            const verifyLatestDate = verifyDates[verifyDates.length - 1]
+            console.log('[Admin] 📊 Current latest response date in Supabase:', verifyLatestDate)
+            if (latestDateHeader && verifyLatestDate !== latestDateHeader) {
+              console.warn('[Admin] ⚠️ Latest date mismatch!')
+              console.warn('[Admin]   - In Excel:', latestDateHeader)
+              console.warn('[Admin]   - In Supabase:', verifyLatestDate)
+            } else {
+              console.log('[Admin] ✅ Latest dates match!')
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[Admin] Failed to verify responses:', err)
+      }
     } catch (error) {
       console.error('[Admin] Export error:', error)
       const errorMsg = error instanceof Error ? error.message : '알 수 없는 오류'

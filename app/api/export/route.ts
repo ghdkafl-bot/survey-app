@@ -63,11 +63,26 @@ export async function GET(request: NextRequest) {
 
     const from = request.nextUrl.searchParams.get('from')
     const to = request.nextUrl.searchParams.get('to')
+    const timestamp = request.nextUrl.searchParams.get('_t') || Date.now().toString()
 
-    console.log(`[Export] Fetching responses for survey ${surveyId}, from: ${from}, to: ${to}`)
+    console.log(`[Export] 🔄 Fetching responses for survey ${surveyId}, from: ${from}, to: ${to}`)
+    console.log(`[Export] Request timestamp: ${timestamp}`)
+    console.log(`[Export] Request URL: ${request.url}`)
+    console.log(`[Export] Current server time: ${new Date().toISOString()}`)
+    
+    // 실시간 데이터를 보장하기 위해 최신 데이터 조회
+    const fetchStartTime = Date.now()
+    console.log(`[Export] Starting data fetch at ${new Date(fetchStartTime).toISOString()}`)
     
     const allResponses = await db.getResponsesBySurvey(surveyId)
+    
+    const fetchEndTime = Date.now()
+    console.log(`[Export] ✅ Data fetch completed in ${fetchEndTime - fetchStartTime}ms`)
     console.log(`[Export] Total responses fetched: ${allResponses.length}`)
+    
+    if (allResponses.length === 0) {
+      console.warn(`[Export] ⚠️ No responses found for survey ${surveyId}`)
+    }
     
     // 최신 응답 확인
     if (allResponses.length > 0) {
@@ -863,6 +878,17 @@ export async function GET(request: NextRequest) {
     })
 
         console.log(`[Export] Sheet "${typeKey}": ${excelData.length - 1} rows (${excelData.length - 1} responses + 1 header)`)
+        
+        // 엑셀 시트에 포함된 응답 날짜 범위 확인
+        if (sortedGroupResponses.length > 0) {
+          const sheetLatestDate = sortedGroupResponses[0].submittedAt
+          const sheetOldestDate = sortedGroupResponses[sortedGroupResponses.length - 1].submittedAt
+          console.log(`[Export] Sheet "${typeKey}" date range:`, {
+            latest: sheetLatestDate,
+            oldest: sheetOldestDate,
+            totalResponses: sortedGroupResponses.length,
+          })
+        }
 
     const ws = XLSX.utils.aoa_to_sheet(excelData)
         const colWidths = headers.map(() => ({ wch: 30 }))
@@ -875,17 +901,52 @@ export async function GET(request: NextRequest) {
     }
 
     const excelBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
+    
+    // 최종 엑셀 파일 생성 완료 로그
+    console.log(`[Export] ✅ Excel file generated successfully`)
+    console.log(`[Export] Excel file size: ${excelBuffer.length} bytes`)
+    console.log(`[Export] Total sheets: ${wb.SheetNames.length}`)
+    console.log(`[Export] Sheet names: ${wb.SheetNames.join(', ')}`)
+    
+    // 전체 응답 날짜 범위 요약
+    let latestDate = ''
+    let oldestDate = ''
+    if (responses.length > 0) {
+      const allResponseDates = responses.map(r => r.submittedAt).sort()
+      latestDate = allResponseDates[allResponseDates.length - 1]
+      oldestDate = allResponseDates[0]
+      console.log(`[Export] 📊 Excel Summary:`, {
+        totalResponses: responses.length,
+        latestDate: latestDate,
+        oldestDate: oldestDate,
+        dateRange: `${oldestDate} ~ ${latestDate}`,
+        uniqueDates: new Set(allResponseDates).size,
+      })
+      console.log(`[Export] ⏰ Latest response date in Excel: ${latestDate}`)
+      console.log(`[Export] ⏰ Oldest response date in Excel: ${oldestDate}`)
+    } else {
+      console.warn(`[Export] ⚠️ No responses included in Excel file!`)
+    }
+
+    // 응답 헤더에 최신 응답 정보 추가 (브라우저에서 확인 가능하도록)
+    const responseHeaders: Record<string, string> = {
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="survey-${surveyId}-${Date.now()}.xlsx"`,
+      'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, private',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'X-Content-Type-Options': 'nosniff',
+      'Last-Modified': new Date().toUTCString(),
+    }
+    
+    if (latestDate) {
+      responseHeaders['X-Latest-Response-Date'] = latestDate
+      responseHeaders['X-Oldest-Response-Date'] = oldestDate
+      responseHeaders['X-Total-Responses'] = responses.length.toString()
+    }
 
     return new NextResponse(excelBuffer, {
-      headers: {
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="survey-${surveyId}-${Date.now()}.xlsx"`,
-        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, private',
-        'Pragma': 'no-cache',
-        'Expires': '0',
-        'X-Content-Type-Options': 'nosniff',
-        'Last-Modified': new Date().toUTCString(),
-      },
+      headers: responseHeaders,
     })
   } catch (error) {
     console.error('Export error:', error)
