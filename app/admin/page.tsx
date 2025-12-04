@@ -486,6 +486,8 @@ export default function AdminPage() {
     try {
       // 엑셀 다운로드 전에 최신 응답 정보 확인
       console.log('[Admin] 🔍 Checking latest responses before export...')
+      let latestResponseId = ''
+      let expectedTotalCount = 0
       try {
         const responsesRes = await fetch(`/api/responses?surveyId=${surveyId}`, { cache: 'no-store' })
         if (responsesRes.ok) {
@@ -496,9 +498,13 @@ export default function AdminPage() {
             const latestDate = allDates[allDates.length - 1]
             const oldestDate = allDates[0]
             
+            latestResponseId = latestResponse.id
+            expectedTotalCount = responses.length
+            
             console.log('[Admin] 📊 Latest response info from Supabase:')
             console.log('[Admin]   - Total responses:', responses.length)
             console.log('[Admin]   - Latest response date:', latestDate)
+            console.log('[Admin]   - Latest response ID:', latestResponseId)
             console.log('[Admin]   - Oldest response date:', oldestDate)
             console.log('[Admin]   - Latest response details:', {
               id: latestResponse.id,
@@ -515,10 +521,20 @@ export default function AdminPage() {
         console.error('[Admin] Failed to fetch latest responses:', err)
       }
       
+      // 최신 응답이 있으면 조금 더 기다림 (데이터베이스 커밋 완료 대기)
+      if (latestResponseId) {
+        console.log('[Admin] ⏳ Waiting 10 seconds for database commit...')
+        await new Promise(resolve => setTimeout(resolve, 10000))
+      }
+      
       const range = exportRanges[surveyId] || { from: '', to: '' }
       const params = new URLSearchParams({ surveyId })
       if (range.from) params.set('from', range.from)
       if (range.to) params.set('to', range.to)
+      if (latestResponseId) {
+        params.set('latestResponseId', latestResponseId)
+        params.set('expectedCount', expectedTotalCount.toString())
+      }
       
       // 캐시 무효화를 위해 타임스탬프 추가
       params.append('_t', Date.now().toString())

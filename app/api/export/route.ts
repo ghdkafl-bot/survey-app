@@ -74,33 +74,62 @@ export async function GET(request: NextRequest) {
     const from = request.nextUrl.searchParams.get('from')
     const to = request.nextUrl.searchParams.get('to')
     const timestamp = request.nextUrl.searchParams.get('_t') || Date.now().toString()
+    const latestResponseId = request.nextUrl.searchParams.get('latestResponseId') || ''
+    const expectedCount = request.nextUrl.searchParams.get('expectedCount')
 
     console.log(`[Export] 🔄 Fetching responses for survey ${surveyId}, from: ${from}, to: ${to}`)
     console.log(`[Export] Request timestamp: ${timestamp}`)
     console.log(`[Export] Request URL: ${request.url}`)
     console.log(`[Export] Current server time: ${new Date().toISOString()}`)
+    if (latestResponseId) {
+      console.log(`[Export] 🎯 Target latest response ID: ${latestResponseId}`)
+      console.log(`[Export] 🎯 Expected total count: ${expectedCount || 'N/A'}`)
+    }
     
     // 실시간 데이터를 보장하기 위해 최신 데이터 조회
     // 약간의 지연을 추가하여 최신 데이터가 완전히 저장되도록 보장
     const fetchStartTime = Date.now()
     console.log(`[Export] Starting data fetch at ${new Date(fetchStartTime).toISOString()}`)
     
-    // 최신 데이터가 완전히 저장되도록 약간의 지연 추가 (3초로 증가)
-    await new Promise(resolve => setTimeout(resolve, 3000))
+    // 최신 응답 ID가 제공된 경우, 해당 응답이 포함될 때까지 기다림
+    // 그렇지 않은 경우 기본 지연 시간 (10초로 증가)
+    const baseDelay = latestResponseId ? 10000 : 10000
+    console.log(`[Export] ⏳ Waiting ${baseDelay}ms for database commit...`)
+    await new Promise(resolve => setTimeout(resolve, baseDelay))
     
     // 최신 데이터를 확실히 가져오기 위해 여러 번 조회하고 최대값 사용
     let allResponses: any[] = []
     let maxCount = 0
     let latestDate = ''
     
-    for (let attempt = 1; attempt <= 5; attempt++) {
+    // 최신 응답 ID가 제공된 경우, 해당 ID가 포함될 때까지 최대 시도
+    const maxAttempts = latestResponseId ? 10 : 7
+    let foundTargetResponse = false
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       console.log(`[Export] 🔄 Attempt ${attempt}: Calling getResponsesBySurvey at ${new Date().toISOString()}`)
       const responses = await db.getResponsesBySurvey(surveyId)
       console.log(`[Export] 🔍 Attempt ${attempt} returned ${responses.length} responses`)
       
       if (responses.length > 0) {
         const currentLatestDate = responses[0]?.submittedAt || ''
-        console.log(`[Export] 🔍 Attempt ${attempt} latest date: ${currentLatestDate}`)
+        const currentLatestId = responses[0]?.id || ''
+        console.log(`[Export] 🔍 Attempt ${attempt} latest response:`, {
+          id: currentLatestId,
+          date: currentLatestDate,
+          count: responses.length
+        })
+        
+        // 최신 응답 ID가 제공된 경우, 해당 응답이 포함되었는지 확인
+        if (latestResponseId) {
+          const hasTargetResponse = responses.some((r: { id: string }) => r.id === latestResponseId)
+          if (hasTargetResponse) {
+            foundTargetResponse = true
+            console.log(`[Export] ✅ Target response ID ${latestResponseId} found in attempt ${attempt}!`)
+          } else {
+            console.log(`[Export] ⚠️ Target response ID ${latestResponseId} not found yet in attempt ${attempt}`)
+          }
+        }
         
         // 더 많은 응답 수 또는 더 최신의 날짜를 가진 경우 업데이트
         if (responses.length > maxCount || (responses.length === maxCount && currentLatestDate > latestDate)) {
@@ -108,16 +137,36 @@ export async function GET(request: NextRequest) {
           latestDate = currentLatestDate
           allResponses = responses
           console.log(`[Export] ✅ Updated to ${maxCount} responses with latest date ${latestDate} (attempt ${attempt})`)
+          console.log(`[Export] ✅ Latest response ID: ${currentLatestId}`)
+        } else {
+          console.log(`[Export] ⚠️ Attempt ${attempt} did not improve (current max: ${maxCount}, latest date: ${latestDate})`)
         }
+        
+        // 최신 응답 ID가 제공되고 찾았으며, 예상 개수와 일치하면 조기 종료
+        if (latestResponseId && foundTargetResponse && expectedCount) {
+          const expectedNum = parseInt(expectedCount, 10)
+          if (responses.length >= expectedNum) {
+            console.log(`[Export] ✅ Found target response and reached expected count (${expectedNum}), stopping early`)
+            break
+          }
+        }
+      } else {
+        console.log(`[Export] ⚠️ Attempt ${attempt} returned no responses`)
       }
       
-      // 마지막 시도가 아니면 잠시 대기 (2초로 증가)
-      if (attempt < 5) {
-        await new Promise(resolve => setTimeout(resolve, 2000))
+      // 마지막 시도가 아니면 잠시 대기
+      if (attempt < maxAttempts) {
+        const waitTime = latestResponseId && !foundTargetResponse ? 5000 : 3000
+        console.log(`[Export] ⏳ Waiting ${waitTime}ms before next attempt...`)
+        await new Promise(resolve => setTimeout(resolve, waitTime))
       }
     }
     
-    console.log(`[Export] ✅ Final: Using ${allResponses.length} responses (after ${5} attempts)`)
+    if (latestResponseId && !foundTargetResponse) {
+      console.warn(`[Export] ⚠️ WARNING: Target response ID ${latestResponseId} was not found after ${maxAttempts} attempts!`)
+    }
+    
+    console.log(`[Export] ✅ Final: Using ${allResponses.length} responses (after ${7} attempts)`)
     if (allResponses.length > 0 && latestDate) {
       console.log(`[Export] ✅ Final latest response date: ${latestDate}`)
     }
@@ -1045,4 +1094,5 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
 
