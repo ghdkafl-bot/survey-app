@@ -85,6 +85,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false)
   const [exportRanges, setExportRanges] = useState<Record<string, { from: string; to: string }>>({})
   const [purgeRanges, setPurgeRanges] = useState<Record<string, { from: string; to: string }>>({})
+  const [latestResponseInfo, setLatestResponseInfo] = useState<Record<string, { latestDate: string; totalCount: number } | null>>({})
 
   useEffect(() => {
     const authenticated = sessionStorage.getItem('adminAuthenticated')
@@ -599,6 +600,58 @@ export default function AdminPage() {
       console.error('[Admin] Export error:', error)
       const errorMsg = error instanceof Error ? error.message : '알 수 없는 오류'
       alert(`엑셀 다운로드에 실패했습니다: ${errorMsg}\n\n브라우저 콘솔을 확인해주세요.`)
+    }
+  }
+
+  const handleCheckLatestResponse = async (surveyId: string) => {
+    try {
+      console.log('[Admin] 🔍 Checking latest responses for survey:', surveyId)
+      const res = await fetch(`/api/responses?surveyId=${surveyId}`, { cache: 'no-store' })
+      
+      if (!res.ok) {
+        throw new Error(`Failed to fetch responses: ${res.status}`)
+      }
+      
+      const responses = await res.json()
+      
+      if (responses && responses.length > 0) {
+        const allDates = responses.map((r: any) => r.submittedAt).sort()
+        const latestDate = allDates[allDates.length - 1]
+        const latestResponse = responses.find((r: any) => r.submittedAt === latestDate) || responses[0]
+        
+        const info = {
+          latestDate: latestDate,
+          totalCount: responses.length,
+        }
+        
+        setLatestResponseInfo(prev => ({ ...prev, [surveyId]: info }))
+        
+        // 브라우저 콘솔에도 로그 출력
+        console.log('[Admin] 📊 Latest response info:', {
+          latestDate,
+          totalCount: responses.length,
+          latestResponse: {
+            id: latestResponse.id,
+            submittedAt: latestResponse.submittedAt,
+            patientName: latestResponse.patientName,
+            patientType: latestResponse.patientType,
+          },
+        })
+        
+        // 알림 표시
+        const dateStr = new Date(latestDate).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })
+        alert(`최신 응답 정보:\n\n` +
+              `총 응답 수: ${responses.length}개\n` +
+              `최신 응답 일시: ${dateStr}\n` +
+              `최신 응답 환자: ${latestResponse.patientName || 'N/A'}\n` +
+              `최신 응답 유형: ${latestResponse.patientType || 'N/A'}`)
+      } else {
+        setLatestResponseInfo(prev => ({ ...prev, [surveyId]: null }))
+        alert('아직 등록된 응답이 없습니다.')
+      }
+    } catch (error) {
+      console.error('[Admin] Failed to check latest response:', error)
+      alert('최신 응답 확인에 실패했습니다. 브라우저 콘솔을 확인해주세요.')
     }
   }
 
@@ -1677,7 +1730,28 @@ export default function AdminPage() {
                         >
                           Excel 다운로드
                         </button>
+                        <button
+                          onClick={() => handleCheckLatestResponse(survey.id)}
+                          className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors text-sm w-full sm:w-auto"
+                        >
+                          최신 응답 확인
+                        </button>
                       </div>
+                      {latestResponseInfo[survey.id] && (
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+                          <p className="font-semibold text-blue-800">📊 최신 응답 정보</p>
+                          <p className="text-blue-700 mt-1">
+                            총 응답 수: <strong>{latestResponseInfo[survey.id]?.totalCount}</strong>개
+                          </p>
+                          <p className="text-blue-700">
+                            최신 응답 일시: <strong>
+                              {latestResponseInfo[survey.id]?.latestDate 
+                                ? new Date(latestResponseInfo[survey.id]!.latestDate).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })
+                                : 'N/A'}
+                            </strong>
+                          </p>
+                        </div>
+                      )}
                       <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
                         <div className="flex gap-2 w-full sm:w-auto">
                           <input
