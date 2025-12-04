@@ -203,20 +203,37 @@ export async function GET(request: NextRequest) {
           if (hasTargetResponse) {
             foundTargetResponse = true
             console.log(`[Export] ✅ Target response ID ${latestResponseId} found in attempt ${attempt}!`)
-            // 최신 응답 ID를 찾았으면 해당 응답 세트를 사용 (응답 수가 적어도)
-            maxCount = responses.length
-            latestDate = currentLatestDate
-            allResponses = responses
-            console.log(`[Export] ✅ Updated to ${maxCount} responses with target response (attempt ${attempt})`)
-            console.log(`[Export] ✅ Latest response ID: ${currentLatestId}`)
             
-            // 예상 개수와 일치하면 조기 종료
+            // 예상 개수와 비교하여 더 많은 응답을 가진 세트 사용
             if (expectedCount) {
               const expectedNum = parseInt(expectedCount, 10)
               if (responses.length >= expectedNum) {
+                // 예상 개수 이상이면 이 세트 사용
+                maxCount = responses.length
+                latestDate = currentLatestDate
+                allResponses = responses
+                console.log(`[Export] ✅ Updated to ${maxCount} responses (>= expected ${expectedNum}) with target response (attempt ${attempt})`)
+                console.log(`[Export] ✅ Latest response ID: ${currentLatestId}`)
                 console.log(`[Export] ✅ Found target response and reached expected count (${expectedNum}), stopping early`)
                 break
+              } else {
+                // 예상 개수보다 적으면 더 많은 응답을 찾기 위해 계속 시도
+                console.log(`[Export] ⚠️ Found target response but count (${responses.length}) < expected (${expectedNum}), continuing...`)
+                // 더 많은 응답 수를 가진 경우에만 업데이트
+                if (responses.length > maxCount) {
+                  maxCount = responses.length
+                  latestDate = currentLatestDate
+                  allResponses = responses
+                  console.log(`[Export] ✅ Updated to ${maxCount} responses with target response (attempt ${attempt})`)
+                }
               }
+            } else {
+              // 예상 개수가 없으면 해당 응답 세트 사용
+              maxCount = responses.length
+              latestDate = currentLatestDate
+              allResponses = responses
+              console.log(`[Export] ✅ Updated to ${maxCount} responses with target response (attempt ${attempt})`)
+              console.log(`[Export] ✅ Latest response ID: ${currentLatestId}`)
             }
           } else {
             console.log(`[Export] ⚠️ Target response ID ${latestResponseId} not found yet in attempt ${attempt}`)
@@ -289,12 +306,42 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    console.log(`[Export] ✅ Final: Using ${allResponses.length} responses (after ${maxAttempts} attempts)`)
+    // 중복 제거 (같은 ID를 가진 응답이 여러 번 포함될 수 있음)
+    const uniqueResponsesMap = new Map<string, any>()
+    allResponses.forEach((response: { id: string }) => {
+      if (!uniqueResponsesMap.has(response.id)) {
+        uniqueResponsesMap.set(response.id, response)
+      }
+    })
+    allResponses = Array.from(uniqueResponsesMap.values())
+    
+    // 날짜순으로 다시 정렬 (최신순)
+    allResponses.sort((a: { submittedAt: string }, b: { submittedAt: string }) => {
+      return new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+    })
+    
+    // 예상 개수와 비교
+    if (expectedCount) {
+      const expectedNum = parseInt(expectedCount, 10)
+      if (allResponses.length < expectedNum) {
+        console.warn(`[Export] ⚠️ WARNING: Response count mismatch!`)
+        console.warn(`[Export]   - Expected: ${expectedNum}`)
+        console.warn(`[Export]   - Actual: ${allResponses.length}`)
+        console.warn(`[Export]   - Missing: ${expectedNum - allResponses.length} responses`)
+        console.warn(`[Export]   - This might be due to read replica lag. Latest response is included via direct lookup.`)
+      } else if (allResponses.length > expectedNum) {
+        console.log(`[Export] ℹ️ More responses than expected (${allResponses.length} > ${expectedNum})`)
+      } else {
+        console.log(`[Export] ✅ Response count matches expected: ${allResponses.length}`)
+      }
+    }
+    
+    console.log(`[Export] ✅ Final: Using ${allResponses.length} unique responses (after ${maxAttempts} attempts and deduplication)`)
     if (allResponses.length > 0 && latestDate) {
       console.log(`[Export] ✅ Final latest response date: ${latestDate}`)
     }
     
-    console.log(`[Export] 🔍 Verification: Fetched ${allResponses.length} responses`)
+    console.log(`[Export] 🔍 Verification: Fetched ${allResponses.length} unique responses`)
     if (allResponses.length > 0) {
       const latestResponse = allResponses[0]
       const allDates = allResponses.map(r => r.submittedAt).sort()
