@@ -497,6 +497,7 @@ export default function AdminPage() {
       console.log('[Admin] 🔍 Checking latest responses before export...')
       let latestResponseId = ''
       let expectedTotalCount = 0
+      let allResponseIds: string[] = []
       try {
         const responsesRes = await fetch(`/api/responses?surveyId=${surveyId}`, { cache: 'no-store' })
         if (responsesRes.ok) {
@@ -509,6 +510,7 @@ export default function AdminPage() {
             
             latestResponseId = latestResponse.id
             expectedTotalCount = responses.length
+            allResponseIds = responses.map((r: any) => r.id)
             
             console.log('[Admin] 📊 Latest response info from Supabase:')
             console.log('[Admin]   - Total responses:', responses.length)
@@ -544,6 +546,10 @@ export default function AdminPage() {
       if (latestResponseId) {
         params.set('latestResponseId', latestResponseId)
         params.set('expectedCount', expectedTotalCount.toString())
+        // 모든 응답 ID를 전달하여 누락된 응답을 직접 조회할 수 있도록 함
+        if (allResponseIds.length > 0) {
+          params.set('allResponseIds', allResponseIds.join(','))
+        }
       }
       
       // 캐시 무효화를 위해 타임스탬프 추가

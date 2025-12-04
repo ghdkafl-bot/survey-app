@@ -76,6 +76,14 @@ export async function GET(request: NextRequest) {
     const timestamp = request.nextUrl.searchParams.get('_t') || Date.now().toString()
     const latestResponseId = request.nextUrl.searchParams.get('latestResponseId') || ''
     const expectedCount = request.nextUrl.searchParams.get('expectedCount')
+    const allResponseIdsParam = request.nextUrl.searchParams.get('allResponseIds') || ''
+    const allResponseIds = allResponseIdsParam ? allResponseIdsParam.split(',').filter(id => id.trim().length > 0) : []
+    
+    if (allResponseIds.length > 0) {
+      console.log(`[Export] 📋 Received ${allResponseIds.length} response IDs from client for verification`)
+    }
+    const allResponseIdsParam = request.nextUrl.searchParams.get('allResponseIds') || ''
+    const allResponseIds = allResponseIdsParam ? allResponseIdsParam.split(',').filter(id => id.trim().length > 0) : []
 
     console.log(`[Export] 🔄 Fetching responses for survey ${surveyId}, from: ${from}, to: ${to}`)
     console.log(`[Export] Request timestamp: ${timestamp}`)
@@ -105,8 +113,8 @@ export async function GET(request: NextRequest) {
     let latestDate = ''
     
     // 최신 응답 ID가 제공된 경우, 해당 ID가 포함될 때까지 최대 시도
-    // 재시도 횟수를 줄여서 빠르게 응답 (최대 5회, 각 3초 간격 = 최대 15초)
-    const maxAttempts = latestResponseId ? 5 : 3
+    // 예상 개수에 도달할 때까지 계속 시도 (최대 20회, 각 3초 간격 = 최대 60초)
+    const maxAttempts = latestResponseId && expectedCount ? 20 : 5
     let foundTargetResponse = false
     
     // 최신 응답 ID가 제공된 경우, 먼저 해당 ID로 직접 조회 시도하고 강제로 포함
@@ -218,7 +226,8 @@ export async function GET(request: NextRequest) {
                 break
               } else {
                 // 예상 개수보다 적으면 더 많은 응답을 찾기 위해 계속 시도
-                console.log(`[Export] ⚠️ Found target response but count (${responses.length}) < expected (${expectedNum}), continuing...`)
+                const missing = expectedNum - responses.length
+                console.log(`[Export] ⚠️ Found target response but count (${responses.length}) < expected (${expectedNum}), missing ${missing} responses, continuing...`)
                 // 더 많은 응답 수를 가진 경우에만 업데이트
                 if (responses.length > maxCount) {
                   maxCount = responses.length
@@ -238,14 +247,28 @@ export async function GET(request: NextRequest) {
           } else {
             console.log(`[Export] ⚠️ Target response ID ${latestResponseId} not found yet in attempt ${attempt}`)
             // 최신 응답 ID를 아직 찾지 못했으면, 더 많은 응답 수 또는 더 최신의 날짜를 가진 경우에만 업데이트
-            if (responses.length > maxCount || (responses.length === maxCount && currentLatestDate > latestDate)) {
-              maxCount = responses.length
-              latestDate = currentLatestDate
-              allResponses = responses
-              console.log(`[Export] ✅ Updated to ${maxCount} responses with latest date ${latestDate} (attempt ${attempt})`)
-              console.log(`[Export] ✅ Latest response ID: ${currentLatestId}`)
+            if (expectedCount) {
+              const expectedNum = parseInt(expectedCount, 10)
+              const missing = expectedNum - responses.length
+              if (responses.length > maxCount || (responses.length === maxCount && currentLatestDate > latestDate)) {
+                maxCount = responses.length
+                latestDate = currentLatestDate
+                allResponses = responses
+                console.log(`[Export] ✅ Updated to ${maxCount} responses (missing ${missing}) with latest date ${latestDate} (attempt ${attempt})`)
+                console.log(`[Export] ✅ Latest response ID: ${currentLatestId}`)
+              } else {
+                console.log(`[Export] ⚠️ Attempt ${attempt} did not improve (current max: ${maxCount}, missing: ${expectedNum - maxCount}, latest date: ${latestDate})`)
+              }
             } else {
-              console.log(`[Export] ⚠️ Attempt ${attempt} did not improve (current max: ${maxCount}, latest date: ${latestDate})`)
+              if (responses.length > maxCount || (responses.length === maxCount && currentLatestDate > latestDate)) {
+                maxCount = responses.length
+                latestDate = currentLatestDate
+                allResponses = responses
+                console.log(`[Export] ✅ Updated to ${maxCount} responses with latest date ${latestDate} (attempt ${attempt})`)
+                console.log(`[Export] ✅ Latest response ID: ${currentLatestId}`)
+              } else {
+                console.log(`[Export] ⚠️ Attempt ${attempt} did not improve (current max: ${maxCount}, latest date: ${latestDate})`)
+              }
             }
           }
         } else {
@@ -320,8 +343,93 @@ export async function GET(request: NextRequest) {
       return new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
     })
     
-    // 예상 개수와 비교
-    if (expectedCount) {
+    // 예상 개수와 비교하고, 누락된 응답이 있으면 직접 조회하여 추가
+    if (expectedCount && allResponseIds.length > 0) {
+      const expectedNum = parseInt(expectedCount, 10)
+      if (allResponses.length < expectedNum) {
+        const missingCount = expectedNum - allResponses.length
+        console.warn(`[Export] ⚠️ WARNING: Response count mismatch!`)
+        console.warn(`[Export]   - Expected: ${expectedNum}`)
+        console.warn(`[Export]   - Actual: ${allResponses.length}`)
+        console.warn(`[Export]   - Missing: ${missingCount} responses`)
+        
+        // 현재 포함된 응답 ID 목록
+        const includedIds = new Set(allResponses.map((r: { id: string }) => r.id))
+        
+        // 누락된 응답 ID 찾기
+        const missingIds = allResponseIds.filter(id => !includedIds.has(id))
+        console.log(`[Export] 🔍 Found ${missingIds.length} missing response IDs`)
+        
+        // 누락된 응답들을 직접 조회하여 추가
+        if (missingIds.length > 0) {
+          console.log(`[Export] 🔧 Attempting to fetch ${missingIds.length} missing responses directly...`)
+          const supabase = getSupabaseServiceClient()
+          
+          for (const missingId of missingIds) {
+            try {
+              // 응답 정보 조회
+              const { data: missingResponse, error: missingError } = await supabase
+                .from('responses')
+                .select('id, survey_id, patient_name, patient_type, patient_info_answers, submitted_at, question_snapshot')
+                .eq('id', missingId)
+                .eq('survey_id', surveyId)
+                .single()
+              
+              if (!missingError && missingResponse) {
+                // 해당 응답의 answers 조회
+                const { data: missingAnswers, error: missingAnswersError } = await supabase
+                  .from('answers')
+                  .select('*')
+                  .eq('response_id', missingId)
+                
+                if (!missingAnswersError && missingAnswers) {
+                  // Response 형식으로 변환
+                  const missingResponseData = {
+                    id: missingResponse.id,
+                    surveyId: missingResponse.survey_id,
+                    patientName: missingResponse.patient_name ?? undefined,
+                    patientType: missingResponse.patient_type ?? undefined,
+                    submittedAt: missingResponse.submitted_at ?? new Date().toISOString(),
+                    patientInfoAnswers:
+                      typeof missingResponse.patient_info_answers === 'object' && missingResponse.patient_info_answers !== null
+                        ? missingResponse.patient_info_answers
+                        : undefined,
+                    answers: missingAnswers.map((answer: any) => ({
+                      questionId: answer.question_id,
+                      subQuestionId: answer.sub_question_id ?? undefined,
+                      value: typeof answer.value === 'number' ? answer.value : answer.value === null ? null : undefined,
+                      textValue: typeof answer.text_value === 'string' ? answer.text_value : undefined,
+                    })),
+                  }
+                  
+                  allResponses.push(missingResponseData)
+                  console.log(`[Export] ✅ Fetched and added missing response: ${missingId}`)
+                }
+              }
+            } catch (err) {
+              console.log(`[Export] ⚠️ Failed to fetch missing response ${missingId}:`, err)
+            }
+          }
+          
+          // 날짜순으로 다시 정렬 (최신순)
+          allResponses.sort((a: { submittedAt: string }, b: { submittedAt: string }) => {
+            return new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+          })
+          
+          console.log(`[Export] ✅ After fetching missing responses: ${allResponses.length} total responses`)
+          
+          // 최신 날짜 업데이트
+          if (allResponses.length > 0) {
+            latestDate = allResponses[0].submittedAt
+            console.log(`[Export] ✅ Updated latest date to: ${latestDate}`)
+          }
+        }
+      } else if (allResponses.length > expectedNum) {
+        console.log(`[Export] ℹ️ More responses than expected (${allResponses.length} > ${expectedNum})`)
+      } else {
+        console.log(`[Export] ✅ Response count matches expected: ${allResponses.length}`)
+      }
+    } else if (expectedCount) {
       const expectedNum = parseInt(expectedCount, 10)
       if (allResponses.length < expectedNum) {
         console.warn(`[Export] ⚠️ WARNING: Response count mismatch!`)
