@@ -85,31 +85,42 @@ export async function GET(request: NextRequest) {
     const fetchStartTime = Date.now()
     console.log(`[Export] Starting data fetch at ${new Date(fetchStartTime).toISOString()}`)
     
-    // 최신 데이터가 완전히 저장되도록 약간의 지연 추가 (1초로 증가)
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    // 최신 데이터가 완전히 저장되도록 약간의 지연 추가 (3초로 증가)
+    await new Promise(resolve => setTimeout(resolve, 3000))
     
     // 최신 데이터를 확실히 가져오기 위해 여러 번 조회하고 최대값 사용
     let allResponses: any[] = []
     let maxCount = 0
+    let latestDate = ''
     
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    for (let attempt = 1; attempt <= 5; attempt++) {
       console.log(`[Export] 🔄 Attempt ${attempt}: Calling getResponsesBySurvey at ${new Date().toISOString()}`)
       const responses = await db.getResponsesBySurvey(surveyId)
       console.log(`[Export] 🔍 Attempt ${attempt} returned ${responses.length} responses`)
       
-      if (responses.length > maxCount) {
-        maxCount = responses.length
-        allResponses = responses
-        console.log(`[Export] ✅ Updated to ${maxCount} responses (attempt ${attempt})`)
+      if (responses.length > 0) {
+        const currentLatestDate = responses[0]?.submittedAt || ''
+        console.log(`[Export] 🔍 Attempt ${attempt} latest date: ${currentLatestDate}`)
+        
+        // 더 많은 응답 수 또는 더 최신의 날짜를 가진 경우 업데이트
+        if (responses.length > maxCount || (responses.length === maxCount && currentLatestDate > latestDate)) {
+          maxCount = responses.length
+          latestDate = currentLatestDate
+          allResponses = responses
+          console.log(`[Export] ✅ Updated to ${maxCount} responses with latest date ${latestDate} (attempt ${attempt})`)
+        }
       }
       
-      // 마지막 시도가 아니면 잠시 대기
-      if (attempt < 3) {
-        await new Promise(resolve => setTimeout(resolve, 500))
+      // 마지막 시도가 아니면 잠시 대기 (2초로 증가)
+      if (attempt < 5) {
+        await new Promise(resolve => setTimeout(resolve, 2000))
       }
     }
     
-    console.log(`[Export] ✅ Final: Using ${allResponses.length} responses (after ${3} attempts)`)
+    console.log(`[Export] ✅ Final: Using ${allResponses.length} responses (after ${5} attempts)`)
+    if (allResponses.length > 0 && latestDate) {
+      console.log(`[Export] ✅ Final latest response date: ${latestDate}`)
+    }
     
     console.log(`[Export] 🔍 Verification: Fetched ${allResponses.length} responses`)
     if (allResponses.length > 0) {
