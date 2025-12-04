@@ -103,8 +103,35 @@ export async function GET(request: NextRequest) {
     let latestDate = ''
     
     // 최신 응답 ID가 제공된 경우, 해당 ID가 포함될 때까지 최대 시도
-    const maxAttempts = latestResponseId ? 10 : 7
+    const maxAttempts = latestResponseId ? 15 : 7
     let foundTargetResponse = false
+    
+    // 최신 응답 ID가 제공된 경우, 먼저 해당 ID로 직접 조회 시도
+    if (latestResponseId) {
+      console.log(`[Export] 🎯 Attempting direct lookup for target response ID: ${latestResponseId}`)
+      try {
+        const supabase = getSupabaseServiceClient()
+        const { data: directResponse, error: directError } = await supabase
+          .from('responses')
+          .select('id, survey_id, patient_name, patient_type, patient_info_answers, submitted_at, question_snapshot')
+          .eq('id', latestResponseId)
+          .eq('survey_id', surveyId)
+          .single()
+        
+        if (!directError && directResponse) {
+          console.log(`[Export] ✅ Direct lookup successful! Found response:`, {
+            id: directResponse.id,
+            submittedAt: directResponse.submitted_at,
+          })
+          // 직접 조회 성공 시, 전체 응답 목록을 다시 조회하여 최신 데이터 포함 확인
+          console.log(`[Export] 🔄 Verifying response is in full list...`)
+        } else {
+          console.log(`[Export] ⚠️ Direct lookup failed (this is expected if data is still replicating):`, directError?.message)
+        }
+      } catch (err) {
+        console.log(`[Export] ⚠️ Direct lookup error:`, err)
+      }
+    }
     
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       console.log(`[Export] 🔄 Attempt ${attempt}: Calling getResponsesBySurvey at ${new Date().toISOString()}`)
@@ -126,28 +153,44 @@ export async function GET(request: NextRequest) {
           if (hasTargetResponse) {
             foundTargetResponse = true
             console.log(`[Export] ✅ Target response ID ${latestResponseId} found in attempt ${attempt}!`)
+            // 최신 응답 ID를 찾았으면 해당 응답 세트를 사용 (응답 수가 적어도)
+            maxCount = responses.length
+            latestDate = currentLatestDate
+            allResponses = responses
+            console.log(`[Export] ✅ Updated to ${maxCount} responses with target response (attempt ${attempt})`)
+            console.log(`[Export] ✅ Latest response ID: ${currentLatestId}`)
+            
+            // 예상 개수와 일치하면 조기 종료
+            if (expectedCount) {
+              const expectedNum = parseInt(expectedCount, 10)
+              if (responses.length >= expectedNum) {
+                console.log(`[Export] ✅ Found target response and reached expected count (${expectedNum}), stopping early`)
+                break
+              }
+            }
           } else {
             console.log(`[Export] ⚠️ Target response ID ${latestResponseId} not found yet in attempt ${attempt}`)
+            // 최신 응답 ID를 아직 찾지 못했으면, 더 많은 응답 수 또는 더 최신의 날짜를 가진 경우에만 업데이트
+            if (responses.length > maxCount || (responses.length === maxCount && currentLatestDate > latestDate)) {
+              maxCount = responses.length
+              latestDate = currentLatestDate
+              allResponses = responses
+              console.log(`[Export] ✅ Updated to ${maxCount} responses with latest date ${latestDate} (attempt ${attempt})`)
+              console.log(`[Export] ✅ Latest response ID: ${currentLatestId}`)
+            } else {
+              console.log(`[Export] ⚠️ Attempt ${attempt} did not improve (current max: ${maxCount}, latest date: ${latestDate})`)
+            }
           }
-        }
-        
-        // 더 많은 응답 수 또는 더 최신의 날짜를 가진 경우 업데이트
-        if (responses.length > maxCount || (responses.length === maxCount && currentLatestDate > latestDate)) {
-          maxCount = responses.length
-          latestDate = currentLatestDate
-          allResponses = responses
-          console.log(`[Export] ✅ Updated to ${maxCount} responses with latest date ${latestDate} (attempt ${attempt})`)
-          console.log(`[Export] ✅ Latest response ID: ${currentLatestId}`)
         } else {
-          console.log(`[Export] ⚠️ Attempt ${attempt} did not improve (current max: ${maxCount}, latest date: ${latestDate})`)
-        }
-        
-        // 최신 응답 ID가 제공되고 찾았으며, 예상 개수와 일치하면 조기 종료
-        if (latestResponseId && foundTargetResponse && expectedCount) {
-          const expectedNum = parseInt(expectedCount, 10)
-          if (responses.length >= expectedNum) {
-            console.log(`[Export] ✅ Found target response and reached expected count (${expectedNum}), stopping early`)
-            break
+          // 최신 응답 ID가 제공되지 않은 경우, 기존 로직 사용
+          if (responses.length > maxCount || (responses.length === maxCount && currentLatestDate > latestDate)) {
+            maxCount = responses.length
+            latestDate = currentLatestDate
+            allResponses = responses
+            console.log(`[Export] ✅ Updated to ${maxCount} responses with latest date ${latestDate} (attempt ${attempt})`)
+            console.log(`[Export] ✅ Latest response ID: ${currentLatestId}`)
+          } else {
+            console.log(`[Export] ⚠️ Attempt ${attempt} did not improve (current max: ${maxCount}, latest date: ${latestDate})`)
           }
         }
       } else {
@@ -156,7 +199,8 @@ export async function GET(request: NextRequest) {
       
       // 마지막 시도가 아니면 잠시 대기
       if (attempt < maxAttempts) {
-        const waitTime = latestResponseId && !foundTargetResponse ? 5000 : 3000
+        // 최신 응답 ID를 찾지 못했으면 더 오래 기다림 (읽기 복제본 지연 대응)
+        const waitTime = latestResponseId && !foundTargetResponse ? 10000 : 3000
         console.log(`[Export] ⏳ Waiting ${waitTime}ms before next attempt...`)
         await new Promise(resolve => setTimeout(resolve, waitTime))
       }
@@ -166,7 +210,7 @@ export async function GET(request: NextRequest) {
       console.warn(`[Export] ⚠️ WARNING: Target response ID ${latestResponseId} was not found after ${maxAttempts} attempts!`)
     }
     
-    console.log(`[Export] ✅ Final: Using ${allResponses.length} responses (after ${7} attempts)`)
+    console.log(`[Export] ✅ Final: Using ${allResponses.length} responses (after ${maxAttempts} attempts)`)
     if (allResponses.length > 0 && latestDate) {
       console.log(`[Export] ✅ Final latest response date: ${latestDate}`)
     }
@@ -230,7 +274,10 @@ export async function GET(request: NextRequest) {
     }
     
     // responses 테이블에서 question_snapshot도 함께 조회
-    const supabase = getSupabaseServiceClient()
+    // (이미 위에서 선언되었을 수 있으므로 재사용)
+    if (!supabase) {
+      const supabase = getSupabaseServiceClient()
+    }
     const { data: responsesWithSnapshot, error: snapshotError } = await supabase
       .from('responses')
       .select('id, question_snapshot')

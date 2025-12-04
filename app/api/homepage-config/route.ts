@@ -35,8 +35,8 @@ export async function GET(request: NextRequest) {
         'Content-Type': 'application/json; charset=utf-8',
         'Last-Modified': new Date().toUTCString(),
         'X-Timestamp': new Date().getTime().toString(),
-        'X-Config-Title': config.title, // 디버깅용 헤더
-        'X-Config-Description-Length': config.description.length.toString(), // 디버깅용 헤더
+        // 한글은 헤더에 직접 넣을 수 없으므로 제거 (디버깅은 로그로 확인)
+        'X-Config-Description-Length': config.description.length.toString(),
       },
     })
     
