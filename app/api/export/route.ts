@@ -274,10 +274,7 @@ export async function GET(request: NextRequest) {
     }
     
     // responses 테이블에서 question_snapshot도 함께 조회
-    // (이미 위에서 선언되었을 수 있으므로 재사용)
-    if (!supabase) {
-      const supabase = getSupabaseServiceClient()
-    }
+    const supabase = getSupabaseServiceClient()
     const { data: responsesWithSnapshot, error: snapshotError } = await supabase
       .from('responses')
       .select('id, question_snapshot')
