@@ -998,21 +998,21 @@ export async function GET(request: NextRequest) {
     console.log(`[Export] Sheet names: ${wb.SheetNames.join(', ')}`)
     
     // 전체 응답 날짜 범위 요약
-    let latestDate = ''
-    let oldestDate = ''
+    let excelLatestDate = ''
+    let excelOldestDate = ''
     if (responses.length > 0) {
       const allResponseDates = responses.map(r => r.submittedAt).sort()
-      latestDate = allResponseDates[allResponseDates.length - 1]
-      oldestDate = allResponseDates[0]
+      excelLatestDate = allResponseDates[allResponseDates.length - 1]
+      excelOldestDate = allResponseDates[0]
       console.log(`[Export] 📊 Excel Summary:`, {
         totalResponses: responses.length,
-        latestDate: latestDate,
-        oldestDate: oldestDate,
-        dateRange: `${oldestDate} ~ ${latestDate}`,
+        latestDate: excelLatestDate,
+        oldestDate: excelOldestDate,
+        dateRange: `${excelOldestDate} ~ ${excelLatestDate}`,
         uniqueDates: new Set(allResponseDates).size,
       })
-      console.log(`[Export] ⏰ Latest response date in Excel: ${latestDate}`)
-      console.log(`[Export] ⏰ Oldest response date in Excel: ${oldestDate}`)
+      console.log(`[Export] ⏰ Latest response date in Excel: ${excelLatestDate}`)
+      console.log(`[Export] ⏰ Oldest response date in Excel: ${excelOldestDate}`)
     } else {
       console.warn(`[Export] ⚠️ No responses included in Excel file!`)
     }
@@ -1028,9 +1028,9 @@ export async function GET(request: NextRequest) {
       'Last-Modified': new Date().toUTCString(),
     }
     
-    if (latestDate) {
-      responseHeaders['X-Latest-Response-Date'] = latestDate
-      responseHeaders['X-Oldest-Response-Date'] = oldestDate
+    if (excelLatestDate) {
+      responseHeaders['X-Latest-Response-Date'] = excelLatestDate
+      responseHeaders['X-Oldest-Response-Date'] = excelOldestDate
       responseHeaders['X-Total-Responses'] = responses.length.toString()
     }
 
