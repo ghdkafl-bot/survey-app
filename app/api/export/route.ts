@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, Answer } from '@/lib/db'
 import { getSupabaseServiceClient } from '@/lib/supabaseClient'
 import * as XLSX from 'xlsx'
 
@@ -289,7 +289,7 @@ export async function GET(request: NextRequest) {
     const allAnswerQuestionIds = new Set<string>()
     const allAnswerSubQuestionIds = new Set<string>()
     responses.forEach((response) => {
-      response.answers?.forEach((answer) => {
+      response.answers?.forEach((answer: Answer) => {
         if (answer.questionId) {
           allAnswerQuestionIds.add(answer.questionId)
         }
@@ -892,7 +892,7 @@ export async function GET(request: NextRequest) {
             } else {
               // 객관식 답변
               if (answer.value === null) {
-                row.push('해당없음')
+          row.push('해당없음')
               } else if (typeof answer.value === 'number') {
                 row.push(answer.value)
               } else {
@@ -934,7 +934,7 @@ export async function GET(request: NextRequest) {
                     const questionMatch = a.questionId === desc.questionId
                     if (desc.subQuestionId) {
                       return questionMatch && a.subQuestionId === desc.subQuestionId
-                    } else {
+        } else {
                       return questionMatch && !a.subQuestionId
                     }
                   })
@@ -977,7 +977,7 @@ export async function GET(request: NextRequest) {
     }
 
     const excelBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
-    
+
     // 최종 엑셀 파일 생성 완료 로그
     console.log(`[Export] ✅ Excel file generated successfully`)
     console.log(`[Export] Excel file size: ${excelBuffer.length} bytes`)
@@ -1006,8 +1006,8 @@ export async function GET(request: NextRequest) {
 
     // 응답 헤더에 최신 응답 정보 추가 (브라우저에서 확인 가능하도록)
     const responseHeaders: Record<string, string> = {
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="survey-${surveyId}-${Date.now()}.xlsx"`,
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="survey-${surveyId}-${Date.now()}.xlsx"`,
       'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, private',
       'Pragma': 'no-cache',
       'Expires': '0',
