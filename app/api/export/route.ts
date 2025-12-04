@@ -75,20 +75,31 @@ export async function GET(request: NextRequest) {
     const fetchStartTime = Date.now()
     console.log(`[Export] Starting data fetch at ${new Date(fetchStartTime).toISOString()}`)
     
-    // 최신 데이터가 완전히 저장되도록 약간의 지연 추가 (100ms)
-    await new Promise(resolve => setTimeout(resolve, 100))
+    // 최신 데이터가 완전히 저장되도록 약간의 지연 추가 (500ms로 증가)
+    await new Promise(resolve => setTimeout(resolve, 500))
     
+    console.log(`[Export] 🔄 Calling getResponsesBySurvey at ${new Date().toISOString()}`)
     const allResponses = await db.getResponsesBySurvey(surveyId)
     
     console.log(`[Export] 🔍 Verification: Fetched ${allResponses.length} responses`)
     if (allResponses.length > 0) {
       const latestResponse = allResponses[0]
+      const allDates = allResponses.map(r => r.submittedAt).sort()
+      const latestDate = allDates[allDates.length - 1]
       console.log(`[Export] 🔍 Latest response in fetched data:`, {
         id: latestResponse.id,
         submittedAt: latestResponse.submittedAt,
         patientName: latestResponse.patientName,
         patientType: latestResponse.patientType,
       })
+      console.log(`[Export] 🔍 All response dates:`, {
+        total: allDates.length,
+        latest: latestDate,
+        oldest: allDates[0],
+        recent5: allDates.slice(-5),
+      })
+    } else {
+      console.warn(`[Export] ⚠️ No responses fetched from getResponsesBySurvey!`)
     }
     
     const fetchEndTime = Date.now()
