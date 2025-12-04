@@ -82,8 +82,6 @@ export async function GET(request: NextRequest) {
     if (allResponseIds.length > 0) {
       console.log(`[Export] 📋 Received ${allResponseIds.length} response IDs from client for verification`)
     }
-    const allResponseIdsParam = request.nextUrl.searchParams.get('allResponseIds') || ''
-    const allResponseIds = allResponseIdsParam ? allResponseIdsParam.split(',').filter(id => id.trim().length > 0) : []
 
     console.log(`[Export] 🔄 Fetching responses for survey ${surveyId}, from: ${from}, to: ${to}`)
     console.log(`[Export] Request timestamp: ${timestamp}`)
