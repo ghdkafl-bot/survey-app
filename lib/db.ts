@@ -664,12 +664,47 @@ export const db = {
     console.log(`[DB] getResponsesBySurvey - Query start time: ${new Date(queryStartTime).toISOString()}`)
     
     // 실시간 데이터를 보장하기 위해 항상 최신 데이터를 조회
-    // 캐시를 피하기 위해 타임스탬프를 쿼리에 포함하지 않고, 직접 조회
-    const { data: responsesData, error: responsesError } = await supabase
-      .from('responses')
-      .select('id, survey_id, patient_name, patient_type, patient_info_answers, submitted_at, question_snapshot')
-      .eq('survey_id', surveyId)
-      .order('submitted_at', { ascending: false }) // 최신 데이터부터 가져오기
+    // 모든 데이터를 가져오기 위해 페이지네이션을 사용하여 모든 페이지를 가져옴
+    // Supabase 기본 limit은 1000개이므로, 1000개 이상일 경우 페이지네이션 필요
+    let allResponsesData: any[] = []
+    let hasMore = true
+    let from = 0
+    const pageSize = 1000 // Supabase 기본 limit
+    
+    while (hasMore) {
+      const to = from + pageSize - 1
+      console.log(`[DB] getResponsesBySurvey - Fetching responses range: ${from} to ${to}`)
+      
+      const { data: pageData, error: responsesError } = await supabase
+        .from('responses')
+        .select('id, survey_id, patient_name, patient_type, patient_info_answers, submitted_at, question_snapshot')
+        .eq('survey_id', surveyId)
+        .order('submitted_at', { ascending: false })
+        .range(from, to)
+      
+      if (responsesError) {
+        console.error(`[DB] getResponsesBySurvey - Error fetching responses (range ${from}-${to}):`, responsesError)
+        break
+      }
+      
+      if (!pageData || pageData.length === 0) {
+        hasMore = false
+        break
+      }
+      
+      allResponsesData = [...allResponsesData, ...pageData]
+      console.log(`[DB] getResponsesBySurvey - Fetched ${pageData.length} responses (range: ${from}-${to}, total so far: ${allResponsesData.length})`)
+      
+      // 더 가져올 데이터가 있는지 확인
+      if (pageData.length < pageSize) {
+        hasMore = false
+      } else {
+        from += pageSize
+      }
+    }
+    
+    const responsesData = allResponsesData
+    const responsesError = null
     
     const queryEndTime = Date.now()
     console.log(`[DB] getResponsesBySurvey - Query executed in ${queryEndTime - queryStartTime}ms`)

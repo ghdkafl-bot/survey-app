@@ -39,6 +39,12 @@ export default function Home() {
       
       console.log('[Homepage] Response status:', res.status, res.statusText)
       
+      // 304 Not Modified는 정상 응답 (캐시된 데이터 사용, 상태 변경 없음)
+      if (res.status === 304) {
+        console.log('[Homepage] ✅ 304 Not Modified - using cached data, no update needed')
+        return // 캐시된 데이터 사용, 상태 업데이트 불필요
+      }
+      
       if (!res.ok) {
         const errorText = await res.text()
         console.error('[Homepage] ❌ Response error:', errorText)
