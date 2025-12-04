@@ -92,10 +92,12 @@ export async function GET(request: NextRequest) {
     console.log(`[Export] Starting data fetch at ${new Date(fetchStartTime).toISOString()}`)
     
     // 최신 응답 ID가 제공된 경우, 해당 응답이 포함될 때까지 기다림
-    // 그렇지 않은 경우 기본 지연 시간 (10초로 증가)
-    const baseDelay = latestResponseId ? 10000 : 10000
-    console.log(`[Export] ⏳ Waiting ${baseDelay}ms for database commit...`)
-    await new Promise(resolve => setTimeout(resolve, baseDelay))
+    // 클라이언트에서 이미 3초 대기했으므로 서버에서는 추가 대기 없이 바로 시작
+    const baseDelay = 0
+    if (baseDelay > 0) {
+      console.log(`[Export] ⏳ Waiting ${baseDelay}ms for database commit...`)
+      await new Promise(resolve => setTimeout(resolve, baseDelay))
+    }
     
     // 최신 데이터를 확실히 가져오기 위해 여러 번 조회하고 최대값 사용
     let allResponses: any[] = []
@@ -103,33 +105,81 @@ export async function GET(request: NextRequest) {
     let latestDate = ''
     
     // 최신 응답 ID가 제공된 경우, 해당 ID가 포함될 때까지 최대 시도
-    const maxAttempts = latestResponseId ? 15 : 7
+    // 재시도 횟수를 줄여서 빠르게 응답 (최대 5회, 각 3초 간격 = 최대 15초)
+    const maxAttempts = latestResponseId ? 5 : 3
     let foundTargetResponse = false
     
-    // 최신 응답 ID가 제공된 경우, 먼저 해당 ID로 직접 조회 시도
+    // 최신 응답 ID가 제공된 경우, 먼저 해당 ID로 직접 조회 시도하고 강제로 포함
+    let directResponseData: any = null
     if (latestResponseId) {
       console.log(`[Export] 🎯 Attempting direct lookup for target response ID: ${latestResponseId}`)
-      try {
-        const supabase = getSupabaseServiceClient()
-        const { data: directResponse, error: directError } = await supabase
-          .from('responses')
-          .select('id, survey_id, patient_name, patient_type, patient_info_answers, submitted_at, question_snapshot')
-          .eq('id', latestResponseId)
-          .eq('survey_id', surveyId)
-          .single()
-        
-        if (!directError && directResponse) {
-          console.log(`[Export] ✅ Direct lookup successful! Found response:`, {
-            id: directResponse.id,
-            submittedAt: directResponse.submitted_at,
-          })
-          // 직접 조회 성공 시, 전체 응답 목록을 다시 조회하여 최신 데이터 포함 확인
-          console.log(`[Export] 🔄 Verifying response is in full list...`)
-        } else {
-          console.log(`[Export] ⚠️ Direct lookup failed (this is expected if data is still replicating):`, directError?.message)
+      
+      // 직접 조회를 여러 번 시도 (읽기 복제본 지연 대응)
+      const directLookupAttempts = 5
+      for (let directAttempt = 1; directAttempt <= directLookupAttempts; directAttempt++) {
+        try {
+          const supabase = getSupabaseServiceClient()
+          
+          // 1. 응답 정보 조회
+          const { data: directResponse, error: directError } = await supabase
+            .from('responses')
+            .select('id, survey_id, patient_name, patient_type, patient_info_answers, submitted_at, question_snapshot')
+            .eq('id', latestResponseId)
+            .eq('survey_id', surveyId)
+            .single()
+          
+          if (!directError && directResponse) {
+            console.log(`[Export] ✅ Direct lookup successful (attempt ${directAttempt})! Found response:`, {
+              id: directResponse.id,
+              submittedAt: directResponse.submitted_at,
+            })
+            
+            // 2. 해당 응답의 answers 조회
+            const { data: directAnswers, error: answersError } = await supabase
+              .from('answers')
+              .select('*')
+              .eq('response_id', latestResponseId)
+            
+            if (!answersError && directAnswers) {
+              console.log(`[Export] ✅ Found ${directAnswers.length} answers for direct response`)
+              
+              // 3. Response 형식으로 변환
+              directResponseData = {
+                id: directResponse.id,
+                surveyId: directResponse.survey_id,
+                patientName: directResponse.patient_name ?? undefined,
+                patientType: directResponse.patient_type ?? undefined,
+                submittedAt: directResponse.submitted_at ?? new Date().toISOString(),
+                patientInfoAnswers:
+                  typeof directResponse.patient_info_answers === 'object' && directResponse.patient_info_answers !== null
+                    ? directResponse.patient_info_answers
+                    : undefined,
+                answers: directAnswers.map((answer: any) => ({
+                  questionId: answer.question_id,
+                  subQuestionId: answer.sub_question_id ?? undefined,
+                  value: typeof answer.value === 'number' ? answer.value : answer.value === null ? null : undefined,
+                  textValue: typeof answer.text_value === 'string' ? answer.text_value : undefined,
+                })),
+              }
+              
+              console.log(`[Export] ✅ Direct response data prepared for force inclusion`)
+              break // 성공하면 루프 종료
+            } else {
+              console.log(`[Export] ⚠️ Failed to fetch answers for direct response (attempt ${directAttempt}):`, answersError?.message)
+            }
+          } else {
+            console.log(`[Export] ⚠️ Direct lookup failed (attempt ${directAttempt}, this is expected if data is still replicating):`, directError?.message)
+          }
+        } catch (err) {
+          console.log(`[Export] ⚠️ Direct lookup error (attempt ${directAttempt}):`, err)
         }
-      } catch (err) {
-        console.log(`[Export] ⚠️ Direct lookup error:`, err)
+        
+        // 마지막 시도가 아니면 잠시 대기
+        if (directAttempt < directLookupAttempts && !directResponseData) {
+          const waitTime = 2000 // 2초 대기
+          console.log(`[Export] ⏳ Waiting ${waitTime}ms before next direct lookup attempt...`)
+          await new Promise(resolve => setTimeout(resolve, waitTime))
+        }
       }
     }
     
@@ -199,8 +249,9 @@ export async function GET(request: NextRequest) {
       
       // 마지막 시도가 아니면 잠시 대기
       if (attempt < maxAttempts) {
-        // 최신 응답 ID를 찾지 못했으면 더 오래 기다림 (읽기 복제본 지연 대응)
-        const waitTime = latestResponseId && !foundTargetResponse ? 10000 : 3000
+        // 최신 응답 ID를 찾지 못했으면 조금 기다림 (읽기 복제본 지연 대응)
+        // 하지만 너무 오래 기다리지 않도록 3초로 단축
+        const waitTime = latestResponseId && !foundTargetResponse ? 3000 : 2000
         console.log(`[Export] ⏳ Waiting ${waitTime}ms before next attempt...`)
         await new Promise(resolve => setTimeout(resolve, waitTime))
       }
@@ -208,6 +259,34 @@ export async function GET(request: NextRequest) {
     
     if (latestResponseId && !foundTargetResponse) {
       console.warn(`[Export] ⚠️ WARNING: Target response ID ${latestResponseId} was not found after ${maxAttempts} attempts!`)
+      
+      // 직접 조회한 최신 응답이 있으면 강제로 추가
+      if (directResponseData) {
+        console.log(`[Export] 🔧 Force including direct response: ${latestResponseId}`)
+        
+        // 이미 포함되어 있는지 확인
+        const alreadyIncluded = allResponses.some((r: { id: string }) => r.id === latestResponseId)
+        if (!alreadyIncluded) {
+          // 최신 응답을 맨 앞에 추가 (날짜순 정렬을 위해)
+          allResponses = [directResponseData, ...allResponses]
+          // 날짜순으로 다시 정렬 (최신순)
+          allResponses.sort((a: { submittedAt: string }, b: { submittedAt: string }) => {
+            return new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+          })
+          console.log(`[Export] ✅ Force included direct response. Total responses: ${allResponses.length}`)
+          
+          // 최신 날짜 업데이트
+          if (allResponses.length > 0) {
+            latestDate = allResponses[0].submittedAt
+            maxCount = allResponses.length
+            console.log(`[Export] ✅ Updated latest date to: ${latestDate}, total count: ${maxCount}`)
+          }
+        } else {
+          console.log(`[Export] ℹ️ Direct response already included in list`)
+        }
+      } else {
+        console.warn(`[Export] ⚠️ Direct response data not available to force include`)
+      }
     }
     
     console.log(`[Export] ✅ Final: Using ${allResponses.length} responses (after ${maxAttempts} attempts)`)

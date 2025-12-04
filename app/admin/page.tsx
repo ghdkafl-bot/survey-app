@@ -86,6 +86,7 @@ export default function AdminPage() {
   const [exportRanges, setExportRanges] = useState<Record<string, { from: string; to: string }>>({})
   const [purgeRanges, setPurgeRanges] = useState<Record<string, { from: string; to: string }>>({})
   const [latestResponseInfo, setLatestResponseInfo] = useState<Record<string, { latestDate: string; totalCount: number } | null>>({})
+  const [exporting, setExporting] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     const authenticated = sessionStorage.getItem('adminAuthenticated')
@@ -483,7 +484,15 @@ export default function AdminPage() {
   }
 
   const handleExport = async (surveyId: string) => {
+    // 이미 다운로드 중이면 무시
+    if (exporting[surveyId]) {
+      console.log('[Admin] ⚠️ Export already in progress for survey:', surveyId)
+      return
+    }
+    
     try {
+      setExporting(prev => ({ ...prev, [surveyId]: true }))
+      
       // 엑셀 다운로드 전에 최신 응답 정보 확인
       console.log('[Admin] 🔍 Checking latest responses before export...')
       let latestResponseId = ''
@@ -522,9 +531,10 @@ export default function AdminPage() {
       }
       
       // 최신 응답이 있으면 조금 더 기다림 (데이터베이스 커밋 완료 대기)
+      // 하지만 너무 오래 기다리지 않도록 3초로 단축
       if (latestResponseId) {
-        console.log('[Admin] ⏳ Waiting 10 seconds for database commit...')
-        await new Promise(resolve => setTimeout(resolve, 10000))
+        console.log('[Admin] ⏳ Waiting 3 seconds for database commit...')
+        await new Promise(resolve => setTimeout(resolve, 3000))
       }
       
       const range = exportRanges[surveyId] || { from: '', to: '' }
@@ -616,6 +626,8 @@ export default function AdminPage() {
       console.error('[Admin] Export error:', error)
       const errorMsg = error instanceof Error ? error.message : '알 수 없는 오류'
       alert(`엑셀 다운로드에 실패했습니다: ${errorMsg}\n\n브라우저 콘솔을 확인해주세요.`)
+    } finally {
+      setExporting(prev => ({ ...prev, [surveyId]: false }))
     }
   }
 
@@ -1742,9 +1754,10 @@ export default function AdminPage() {
                         </div>
                         <button
                           onClick={() => handleExport(survey.id)}
-                          className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors text-sm w-full sm:w-auto"
+                          disabled={exporting[survey.id]}
+                          className="px-4 py-2 bg-green-500 hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors text-sm w-full sm:w-auto"
                         >
-                          Excel 다운로드
+                          {exporting[survey.id] ? '다운로드 중...' : 'Excel 다운로드'}
                         </button>
                         <button
                           onClick={() => handleCheckLatestResponse(survey.id)}
