@@ -319,9 +319,9 @@ export async function GET(request: NextRequest) {
     // 응답의 답변 ID 목록 로깅
     if (responses.length > 0) {
       const responseAnswerIds: string[] = []
-      responses[0].answers?.forEach((answer) => {
-        const key = answer.subQuestionId 
-          ? `${answer.questionId}-${answer.subQuestionId}` 
+      responses[0].answers?.forEach((answer: Answer) => {
+        const key = answer.subQuestionId
+          ? `${answer.questionId}-${answer.subQuestionId}`
           : answer.questionId
         responseAnswerIds.push(key)
       })
@@ -547,7 +547,7 @@ export async function GET(request: NextRequest) {
     // 2단계: 답변 데이터에 있는 질문 중 설문 구조에 없는 질문 추가
     // question_snapshot 또는 데이터베이스에서 질문 정보 조회
     responses.forEach((response) => {
-      response.answers?.forEach((answer) => {
+      response.answers?.forEach((answer: Answer) => {
         const key = answer.subQuestionId 
           ? `${answer.questionId}:${answer.subQuestionId}`
           : `${answer.questionId}`
