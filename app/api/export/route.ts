@@ -10,6 +10,16 @@ const sanitizeSheetName = (name: string) => {
   return cleaned.length > 31 ? cleaned.slice(0, 31) : cleaned || 'Sheet'
 }
 
+type Descriptor = {
+  questionId: string
+  subQuestionId?: string
+  questionText: string
+  subQuestionText?: string
+  groupTitle: string
+  isText: boolean
+  order: number
+}
+
 const isWithinRange = (dateString: string, from?: string | null, to?: string | null) => {
   if (!from && !to) return true
   
@@ -487,15 +497,7 @@ export async function GET(request: NextRequest) {
     
     // 현재 설문 구조를 기준으로 Excel 헤더 생성
     // 설문 구조와 답변 데이터를 모두 고려하여 descriptor 생성
-    const answerKeyToDescriptor = new Map<string, { 
-      questionId: string; 
-      subQuestionId?: string; 
-      questionText: string;
-      subQuestionText?: string;
-      groupTitle: string;
-      isText: boolean;
-      order: number;
-    }>()
+    const answerKeyToDescriptor = new Map<string, Descriptor>()
     
     // 1단계: 현재 설문 구조를 기준으로 descriptor 생성 (설문이 수정되지 않은 경우)
     // 모든 질문을 Excel에 포함 (답변이 없어도 질문은 표시)
@@ -646,7 +648,7 @@ export async function GET(request: NextRequest) {
         })
       })
     }
-    console.log(`[Export] Descriptors (first 10):`, sortedDescriptors.slice(0, 10).map(d => ({
+    console.log(`[Export] Descriptors (first 10):`, sortedDescriptors.slice(0, 10).map((d: Descriptor) => ({
       questionId: d.questionId,
       subQuestionId: d.subQuestionId,
       questionText: d.questionText,
@@ -686,7 +688,7 @@ export async function GET(request: NextRequest) {
     
     // Excel 헤더 생성
     const headers: string[] = ['제출일시', '환자 성함', '환자 유형', ...patientInfoHeaders]
-    sortedDescriptors.forEach((desc) => {
+    sortedDescriptors.forEach((desc: Descriptor) => {
       if (desc.isText) {
         headers.push(`${desc.groupTitle} - ${desc.questionText} (주관식)`)
       } else {
@@ -838,7 +840,7 @@ export async function GET(request: NextRequest) {
                 textValue: a.textValue,
               })),
               descriptorsCount: sortedDescriptors.length,
-              descriptorKeys: sortedDescriptors.slice(0, 5).map(d => 
+              descriptorKeys: sortedDescriptors.slice(0, 5).map((d: Descriptor) => 
                 d.subQuestionId ? `${d.questionId}:${d.subQuestionId}` : d.questionId
               ),
               answerKeys: response.answers?.map((a: Answer) => 
@@ -853,7 +855,7 @@ export async function GET(request: NextRequest) {
           }
 
           let matchedAnswers = 0
-          sortedDescriptors.forEach((desc, descIndex) => {
+          sortedDescriptors.forEach((desc: Descriptor, descIndex: number) => {
             // 답변 찾기: questionId와 subQuestionId로 정확히 매칭
             const answer = response.answers?.find((a: Answer) => {
               const questionMatch = a.questionId === desc.questionId
@@ -915,9 +917,9 @@ export async function GET(request: NextRequest) {
             })
             
             // 매칭되지 않은 답변 확인
-            const unmatchedAnswers = response.answers?.filter(a => {
+            const unmatchedAnswers = response.answers?.filter((a: Answer) => {
               const key = a.subQuestionId ? `${a.questionId}:${a.subQuestionId}` : a.questionId
-              return !sortedDescriptors.some(d => {
+              return !sortedDescriptors.some((d: Descriptor) => {
                 const descKey = d.subQuestionId ? `${d.questionId}:${d.subQuestionId}` : d.questionId
                 return descKey === key
               })
@@ -929,7 +931,7 @@ export async function GET(request: NextRequest) {
             // 매칭된 답변 상세 확인
             if (matchedAnswers > 0) {
               console.log(`[Export] Matched answers details:`, 
-                sortedDescriptors.slice(0, 10).map((desc, idx) => {
+                sortedDescriptors.slice(0, 10).map((desc: Descriptor, idx: number) => {
                   const answer = response.answers?.find((a: Answer) => {
                     const questionMatch = a.questionId === desc.questionId
                     if (desc.subQuestionId) {
