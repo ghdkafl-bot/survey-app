@@ -664,7 +664,7 @@ export async function GET(request: NextRequest) {
       console.log(`[Export] First response details:`, {
         id: firstResponse.id,
         answersCount: firstResponse.answers?.length || 0,
-        answers: firstResponse.answers?.map(a => ({
+        answers: firstResponse.answers?.map((a: Answer) => ({
           questionId: a.questionId,
           subQuestionId: a.subQuestionId,
           value: a.value,
@@ -831,7 +831,7 @@ export async function GET(request: NextRequest) {
             console.log(`[Export] Processing first response in sheet "${typeKey}":`, {
               responseId: response.id,
               answersCount: response.answers?.length || 0,
-              answers: response.answers?.map(a => ({
+              answers: response.answers?.map((a: Answer) => ({
                 questionId: a.questionId,
                 subQuestionId: a.subQuestionId,
                 value: a.value,
@@ -841,7 +841,7 @@ export async function GET(request: NextRequest) {
               descriptorKeys: sortedDescriptors.slice(0, 5).map(d => 
                 d.subQuestionId ? `${d.questionId}:${d.subQuestionId}` : d.questionId
               ),
-              answerKeys: response.answers?.map(a => 
+              answerKeys: response.answers?.map((a: Answer) => 
                 a.subQuestionId ? `${a.questionId}:${a.subQuestionId}` : a.questionId
               ) || [],
             })
