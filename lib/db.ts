@@ -106,7 +106,7 @@ export const DEFAULT_PATIENT_INFO_CONFIG: PatientInfoConfig = {
 }
 
 export const DEFAULT_HOMEPAGE_CONFIG: HomepageConfig = {
-  title: '퇴원환자 친절도 설문',
+  title: '내원환자 만족도 조사',
   description: '환자 만족도 조사를 위한 설문 시스템입니다. 참여를 통해 더 나은 서비스를 만들어주세요.',
 }
 

@@ -15,7 +15,7 @@ import {
 } from '@/lib/db'
 
 const ADMIN_ID = 'guamct'
-const ADMIN_PW = 'Hosp7533!!'
+const ADMIN_PW = 'hosp7533'
 const DEFAULT_BACKGROUND = '#f0f9ff'
 
 const DEFAULT_CLOSING_MESSAGE: ClosingMessage = {
@@ -92,7 +92,7 @@ export default function AdminPage() {
     const authenticated = sessionStorage.getItem('adminAuthenticated')
     if (authenticated === 'true') {
       setIsAuthenticated(true)
-      fetchSurveys()
+    fetchSurveys()
       fetchHomepageConfig()
     }
   }, [])
@@ -141,19 +141,40 @@ export default function AdminPage() {
         method: 'GET',
         cache: 'no-store',
         headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
           'Pragma': 'no-cache',
+          'Expires': '0',
+          'X-Requested-With': 'XMLHttpRequest',
         },
       })
-      if (!res.ok) throw new Error('Failed to load homepage config')
-      const data = await res.json()
-      console.log('[Admin] Fetched homepage config:', data)
       
-      if (data && data.title && data.description) {
-        setHomepageConfig({
-          title: data.title.trim(),
-          description: data.description.trim(),
-        })
+      if (!res.ok) {
+        const errorText = await res.text()
+        console.error('[Admin] Failed to load homepage config:', res.status, errorText)
+        throw new Error(`Failed to load homepage config: ${res.status}`)
+      }
+      
+      const data = await res.json()
+      console.log('[Admin] Fetched homepage config:', JSON.stringify(data, null, 2))
+      console.log('[Admin] Raw title from API:', data.title)
+      console.log('[Admin] Raw description from API:', data.description)
+      
+      // 데이터 검증 및 상태 업데이트 (메인화면과 동일한 로직)
+      if (data && typeof data === 'object' && 'title' in data && 'description' in data) {
+        const newConfig: HomepageConfig = {
+          title: typeof data.title === 'string' && data.title.trim().length > 0
+            ? data.title.trim()
+            : DEFAULT_HOMEPAGE_CONFIG.title,
+          description: typeof data.description === 'string' && data.description.trim().length > 0
+            ? data.description.trim()
+            : DEFAULT_HOMEPAGE_CONFIG.description,
+        }
+        
+        console.log('[Admin] Normalized config:', JSON.stringify(newConfig, null, 2))
+        console.log('[Admin] Normalized title:', newConfig.title)
+        console.log('[Admin] Normalized description:', newConfig.description)
+        
+        setHomepageConfig(newConfig)
         console.log('[Admin] Homepage config state updated')
       } else {
         console.warn('[Admin] Invalid homepage config data:', data)
@@ -161,6 +182,10 @@ export default function AdminPage() {
       }
     } catch (error) {
       console.error('[Admin] Failed to fetch homepage config:', error)
+      if (error instanceof Error) {
+        console.error('[Admin] Error message:', error.message)
+      }
+      // 에러 발생 시에도 기본값으로 설정하여 UI가 비어있지 않도록 함
       setHomepageConfig(DEFAULT_HOMEPAGE_CONFIG)
     }
   }
@@ -325,7 +350,7 @@ export default function AdminPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (loading) return
-
+    
     if (!title.trim()) {
       alert('설문 제목을 입력해주세요.')
       return
@@ -339,8 +364,8 @@ export default function AdminPage() {
     for (const group of questionGroups) {
       for (const question of group.questions) {
         if (!question.text.trim()) {
-          alert('모든 문항에 내용을 입력해주세요.')
-          return
+      alert('모든 문항에 내용을 입력해주세요.')
+      return
         }
         if (question.type === 'scale') {
           if (question.subQuestions.length > 5) {
@@ -433,8 +458,8 @@ export default function AdminPage() {
     setLoading(true)
     try {
       const payload = {
-        title,
-        description,
+          title,
+          description,
         backgroundColor,
         questionGroups: questionGroups.map((group, groupIdx) => ({
           id: group.id,
@@ -952,12 +977,12 @@ export default function AdminPage() {
               >
                 데이터 상태 확인
               </button>
-              <Link
-                href="/"
-                className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
-              >
-                홈으로
-              </Link>
+            <Link
+              href="/"
+              className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+            >
+              홈으로
+            </Link>
               <button
                 onClick={handleLogout}
                 className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
@@ -985,23 +1010,23 @@ export default function AdminPage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-2">설문 제목 *</label>
-                  <input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="예: 2024년 1월 퇴원환자 설문"
-                    required
-                  />
-                </div>
+                  required
+                />
+              </div>
                 <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-2">설문 설명</label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    rows={3}
-                    placeholder="설문에 대한 설명을 입력하세요"
-                  />
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  rows={3}
+                  placeholder="설문에 대한 설명을 입력하세요"
+                />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">배경 색상</label>
@@ -1076,8 +1101,8 @@ export default function AdminPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">환자 유형 필수 여부</label>
-                    <button
-                      type="button"
+                  <button
+                    type="button"
                       onClick={() =>
                         setPatientInfoConfig((prev) => ({
                           ...prev,
@@ -1091,8 +1116,8 @@ export default function AdminPage() {
                       }`}
                     >
                       {patientInfoConfig.patientTypeRequired ? '필수로 설정됨' : '선택 사항'}
-                    </button>
-                  </div>
+                  </button>
+                </div>
                 </div>
 
                 <div>
@@ -1100,10 +1125,10 @@ export default function AdminPage() {
                   <div className="space-y-2">
                     {patientInfoConfig.patientTypeOptions.map((option, index) => (
                       <div key={index} className="flex gap-2">
-                        <input
+                    <input
                           value={option}
                           onChange={(e) => updatePatientTypeOption(index, e.target.value)}
-                          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           placeholder={`선택지 ${index + 1}`}
                         />
                         {patientInfoConfig.patientTypeOptions.length > 1 && (
@@ -1154,8 +1179,8 @@ export default function AdminPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">환자 성함 필수 여부</label>
-                    <button
-                      type="button"
+                      <button
+                        type="button"
                       onClick={() =>
                         setPatientInfoConfig((prev) => ({
                           ...prev,
@@ -1349,7 +1374,7 @@ export default function AdminPage() {
                         <button
                           type="button"
                           onClick={() => removeGroup(groupIndex)}
-                          className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+                        className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
                         >
                           그룹 삭제
                         </button>
@@ -1427,9 +1452,9 @@ export default function AdminPage() {
                                   type="button"
                                   onClick={() => removeQuestionFromGroup(groupIndex, questionIndex)}
                                   className="px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm"
-                                >
-                                  삭제
-                                </button>
+                      >
+                        삭제
+                      </button>
                               )}
                             </div>
                           </div>
@@ -1466,10 +1491,10 @@ export default function AdminPage() {
                                 </div>
                               ))}
                             </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+                    )}
+                  </div>
+                ))}
+              </div>
 
                     <button
                       type="button"
@@ -1596,7 +1621,7 @@ export default function AdminPage() {
                   value={homepageConfig.title}
                   onChange={(e) => setHomepageConfig((prev) => ({ ...prev, title: e.target.value }))}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="예: 퇴원환자 친절도 설문"
+                  placeholder="예: 내원환자 만족도 조사"
                   required
                 />
               </div>
@@ -1659,36 +1684,31 @@ export default function AdminPage() {
                     
                     console.log('[Admin] Config saved successfully:', responseData)
                     
-                    // 저장된 데이터로 상태 즉시 업데이트 (입력한 값 우선 사용)
-                    // API 응답이 올바르지 않을 수 있으므로 입력한 값을 직접 사용
-                    const updatedConfig = {
-                      title: titleToSave,
-                      description: descriptionToSave,
-                    }
-                    setHomepageConfig(updatedConfig)
-                    console.log('[Admin] State updated immediately with input values:', updatedConfig)
-                    
-                    // API 응답도 확인하여 로그만 남김 (상태는 덮어쓰지 않음)
+                    // API 응답으로 상태 업데이트 (서버에 저장된 실제 값 사용)
                     if (responseData && responseData.title && responseData.description) {
                       const apiConfig = {
                         title: responseData.title.trim(),
                         description: responseData.description.trim(),
                       }
-                      console.log('[Admin] API response config:', apiConfig)
-                      
-                      // API 응답과 입력값이 다르면 경고
-                      if (apiConfig.title !== titleToSave || apiConfig.description !== descriptionToSave) {
-                        console.warn('[Admin] ⚠️ API response differs from input values!', {
-                          input: { title: titleToSave, description: descriptionToSave },
-                          api: apiConfig,
-                        })
-                        // API 응답이 다르면 API 응답으로 업데이트 (서버에 저장된 값이 정확할 수 있음)
-                        setHomepageConfig(apiConfig)
-                        console.log('[Admin] State updated with API response (different from input)')
+                      setHomepageConfig(apiConfig)
+                      console.log('[Admin] State updated with API response:', apiConfig)
+                    } else {
+                      // API 응답이 없으면 입력한 값 사용
+                      const updatedConfig = {
+                        title: titleToSave,
+                        description: descriptionToSave,
                       }
+                      setHomepageConfig(updatedConfig)
+                      console.log('[Admin] State updated with input values:', updatedConfig)
                     }
                     
                     alert('홈페이지 설정이 저장되었습니다.')
+                    
+                    // 저장 후 최신 데이터 다시 불러오기 (서버와 동기화)
+                    setTimeout(() => {
+                      console.log('[Admin] Refreshing config after save...')
+                      fetchHomepageConfig()
+                    }, 500)
                     
                     // 홈페이지가 열려있다면 강제로 새로고침하도록 메시지 전송
                     if (window.opener) {
@@ -1729,7 +1749,7 @@ export default function AdminPage() {
                   >
                     <div>
                       <h3 className="text-xl font-semibold text-gray-800">{survey.title}</h3>
-                      {survey.description && (
+                        {survey.description && (
                         <p className="text-gray-600 mt-1">{survey.description}</p>
                       )}
                       <p className="text-sm text-gray-500 mt-2">
@@ -1757,9 +1777,9 @@ export default function AdminPage() {
                             onChange={(e) => handleExportRangeChange(survey.id, 'to', e.target.value)}
                             className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
                           />
-                        </div>
-                        <button
-                          onClick={() => handleExport(survey.id)}
+                      </div>
+                      <button
+                        onClick={() => handleExport(survey.id)}
                           disabled={exporting[survey.id]}
                           className="px-4 py-2 bg-green-500 hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors text-sm w-full sm:w-auto"
                         >
