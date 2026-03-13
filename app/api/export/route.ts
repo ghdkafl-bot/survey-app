@@ -160,6 +160,13 @@ export async function GET(request: NextRequest) {
         )
       }
     }
+    // 여기까지 왔다면 survey는 항상 정의되어 있음 (TS 협조용 추가 가드)
+    if (!survey) {
+      return NextResponse.json(
+        { error: 'Survey not found' },
+        { status: 500 }
+      )
+    }
 
     const from = request.nextUrl.searchParams.get('from')
     const to = request.nextUrl.searchParams.get('to')
