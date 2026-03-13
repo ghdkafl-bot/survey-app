@@ -1075,12 +1075,20 @@ export async function GET(request: NextRequest) {
     
     console.log(`[Export] Total descriptors: ${sortedDescriptors.length}`)
     if (sortedDescriptors.length === 0) {
-      console.error(`[Export] ⚠️ WARNING: No descriptors found! This means no questions will be exported.`)
-      console.error(`[Export] Survey has ${survey.questionGroups.length} question groups`)
-      survey.questionGroups.forEach((group, gIdx) => {
-        console.error(`[Export] Group ${gIdx}: ${group.title}, ${group.questions.length} questions`)
-        group.questions.forEach((q, qIdx) => {
-          console.error(`[Export]   Question ${qIdx}: ${q.text} (${q.type}), ${q.subQuestions.length} sub-questions`)
+      console.error(
+        `[Export] ⚠️ WARNING: No descriptors found! This means no questions will be exported.`,
+      )
+      console.error(
+        `[Export] Survey has ${survey.questionGroups.length} question groups`,
+      )
+      survey.questionGroups.forEach((group: any, gIdx: number) => {
+        console.error(
+          `[Export] Group ${gIdx}: ${group.title}, ${group.questions.length} questions`,
+        )
+        group.questions.forEach((q: any, qIdx: number) => {
+          console.error(
+            `[Export]   Question ${qIdx}: ${q.text} (${q.type}), ${q.subQuestions.length} sub-questions`,
+          )
         })
       })
     }
@@ -1113,11 +1121,17 @@ export async function GET(request: NextRequest) {
 
     // 환자 정보 추가 질문 헤더 생성
     const patientInfoHeaders: string[] = []
-    if (survey.patientInfoConfig?.additionalQuestions && survey.patientInfoConfig.additionalQuestions.length > 0) {
-      survey.patientInfoConfig.additionalQuestions.forEach((q) => {
+    if (
+      survey.patientInfoConfig?.additionalQuestions &&
+      survey.patientInfoConfig.additionalQuestions.length > 0
+    ) {
+      survey.patientInfoConfig.additionalQuestions.forEach((q: any) => {
         patientInfoHeaders.push(`환자정보 - ${q.text}`)
       })
-      console.log(`[Export] Added ${patientInfoHeaders.length} patient info question headers:`, patientInfoHeaders)
+      console.log(
+        `[Export] Added ${patientInfoHeaders.length} patient info question headers:`,
+        patientInfoHeaders,
+      )
     } else {
       console.log(`[Export] No additional patient info questions found`)
     }
@@ -1240,8 +1254,11 @@ export async function GET(request: NextRequest) {
           
           // 환자 정보 추가 질문 답변 추가
           const patientInfoAnswers: string[] = []
-          if (survey.patientInfoConfig?.additionalQuestions && survey.patientInfoConfig.additionalQuestions.length > 0) {
-            survey.patientInfoConfig.additionalQuestions.forEach((q) => {
+          if (
+            survey.patientInfoConfig?.additionalQuestions &&
+            survey.patientInfoConfig.additionalQuestions.length > 0
+          ) {
+            survey.patientInfoConfig.additionalQuestions.forEach((q: any) => {
               const answer = response.patientInfoAnswers?.[q.id]
               if (answer && Array.isArray(answer) && answer.length > 0) {
                 patientInfoAnswers.push(answer.join(', '))
@@ -1249,7 +1266,7 @@ export async function GET(request: NextRequest) {
                 patientInfoAnswers.push('')
               }
             })
-            
+
             if (responseIndex === 0) {
               console.log(`[Export] First response patient info answers:`, {
                 patientInfoAnswers: response.patientInfoAnswers,
