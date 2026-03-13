@@ -35,9 +35,9 @@ export async function GET(_request: NextRequest) {
     XLSX.utils.book_append_sheet(workbook, worksheet, '응답백업')
 
     const excelBuffer = XLSX.write(workbook, {
-      type: 'buffer',
+      type: 'array',
       bookType: 'xlsx',
-    }) as Buffer
+    }) as ArrayBuffer
 
     return new NextResponse(excelBuffer, {
       headers: {
