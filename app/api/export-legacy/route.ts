@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 
-const STATIC_SURVEY_ID = 'static-hospital-5q'
+const STATIC_SURVEY_ID = '0d8da8f8-8abb-4c63-8647-919154faf7ea'
 
 export async function GET(_request: NextRequest) {
   try {

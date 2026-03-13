@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx'
 export const dynamic = 'force-dynamic'
 
 // 정적 단일 설문(홈 화면)용 고정 ID
-const STATIC_SURVEY_ID = 'static-hospital-5q'
+const STATIC_SURVEY_ID = '0d8da8f8-8abb-4c63-8647-919154faf7ea'
 
 // 정적 설문 메타 정보 (DB에 설문 행이 없어도 엑셀 생성을 위해 사용)
 const STATIC_SURVEY_DEF: any = {

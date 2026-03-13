@@ -6,7 +6,7 @@ const ADMIN_ID = 'guamct'
 const ADMIN_PW = 'hosp7533'
 
 // 프론트 설문과 동일한 고정 설문 ID
-const STATIC_SURVEY_ID = 'static-hospital-5q'
+const STATIC_SURVEY_ID = '0d8da8f8-8abb-4c63-8647-919154faf7ea'
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
