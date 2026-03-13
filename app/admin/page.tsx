@@ -13,6 +13,7 @@ export default function AdminPage() {
   const [adminId, setAdminId] = useState('')
   const [adminPw, setAdminPw] = useState('')
   const [downloading, setDownloading] = useState(false)
+  const [legacyDownloading, setLegacyDownloading] = useState(false)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -84,6 +85,49 @@ export default function AdminPage() {
     }
   }
 
+  const handleDownloadLegacyExcel = async () => {
+    if (legacyDownloading) return
+    setLegacyDownloading(true)
+    try {
+      const res = await fetch('/api/export-legacy', {
+        method: 'GET',
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+          Pragma: 'no-cache',
+          Expires: '0',
+        },
+      })
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        console.error('Legacy export failed:', res.status, res.statusText, text)
+        alert('예전 응답 엑셀 다운로드에 실패했습니다.')
+        return
+      }
+
+      const blob = await res.blob()
+      if (!blob.size) {
+        alert('다운로드된 파일이 비어 있습니다.')
+        return
+      }
+
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'legacy-responses-backup.xlsx'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Legacy export error:', error)
+      alert('예전 응답 엑셀 다운로드 중 오류가 발생했습니다.')
+    } finally {
+      setLegacyDownloading(false)
+    }
+  }
+
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center px-4">
@@ -133,19 +177,34 @@ export default function AdminPage() {
           </p>
         </header>
 
-        <section className="space-y-3">
-          <div className="text-sm text-gray-700">
-            <p className="font-medium">대상 설문</p>
-            <p className="mt-1 text-gray-500 break-all">ID: {STATIC_SURVEY_ID}</p>
+        <section className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-gray-800">신규 설문 (고정 5문항)</p>
+            <p className="text-xs text-gray-500 break-all">설문 ID: {STATIC_SURVEY_ID}</p>
+            <button
+              type="button"
+              onClick={handleDownloadExcel}
+              disabled={downloading}
+              className="w-full px-4 py-3 rounded-lg bg-emerald-500 text-white font-semibold text-sm hover:bg-emerald-600 disabled:bg-gray-400 transition-colors"
+            >
+              {downloading ? '다운로드 중...' : '신규 설문 엑셀 다운로드'}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={handleDownloadExcel}
-            disabled={downloading}
-            className="w-full px-4 py-3 rounded-lg bg-emerald-500 text-white font-semibold text-sm hover:bg-emerald-600 disabled:bg-gray-400 transition-colors"
-          >
-            {downloading ? '다운로드 중...' : '엑셀 다운로드'}
-          </button>
+
+          <div className="pt-2 border-t border-gray-200 space-y-2">
+            <p className="text-sm font-medium text-gray-800">예전 응답 백업</p>
+            <p className="text-xs text-gray-500">
+              예전 설문들(`{STATIC_SURVEY_ID}` 이전 설문)의 모든 응답을 한 번에 백업합니다.
+            </p>
+            <button
+              type="button"
+              onClick={handleDownloadLegacyExcel}
+              disabled={legacyDownloading}
+              className="w-full px-4 py-3 rounded-lg bg-slate-600 text-white font-semibold text-sm hover:bg-slate-700 disabled:bg-gray-400 transition-colors"
+            >
+              {legacyDownloading ? '백업 생성 중...' : '예전 응답 백업 엑셀 다운로드'}
+            </button>
+          </div>
         </section>
 
         <button
