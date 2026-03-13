@@ -951,9 +951,9 @@ export async function GET(request: NextRequest) {
             order: groupIdx * 1000 + questionIdx * 10,
           })
           console.log(`[Export] Added text question descriptor: ${group.title} - ${question.text}`)
-        } else {
-          if (question.subQuestions.length > 0) {
-            question.subQuestions.forEach((sub, subIdx) => {
+          } else {
+            if (question.subQuestions.length > 0) {
+              question.subQuestions.forEach((sub: any, subIdx: number) => {
               const key = `${question.id}:${sub.id}`
               answerKeyToDescriptor.set(key, {
                 questionId: question.id,
