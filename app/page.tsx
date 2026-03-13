@@ -132,6 +132,20 @@ export default function Home() {
     }
   }
 
+  const handleCloseWindow = () => {
+    if (typeof window === 'undefined') return
+    window.close()
+    // 브라우저 정책으로 close가 안 되는 경우, 대체 행동
+    setTimeout(() => {
+      if (window.closed) return
+      if (window.history.length > 1) {
+        window.history.back()
+      } else {
+        window.location.href = 'about:blank'
+      }
+    }, 100)
+  }
+
   const handleNext = async () => {
     if (!isInfoStep && currentQuestion?.type === 'text') {
       // textarea onChange에서 값 업데이트됨
@@ -339,7 +353,7 @@ export default function Home() {
           </p>
           <button
             type="button"
-            onClick={() => window.close()}
+            onClick={handleCloseWindow}
             className="px-10 py-3 rounded-xl bg-[#0F7B6C] text-white font-semibold shadow-md active:scale-95 transition-transform"
           >
             닫기

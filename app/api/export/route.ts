@@ -5,6 +5,91 @@ import * as XLSX from 'xlsx'
 
 export const dynamic = 'force-dynamic'
 
+// 정적 단일 설문(홈 화면)용 고정 ID
+const STATIC_SURVEY_ID = 'static-hospital-5q'
+
+// 정적 설문 메타 정보 (DB에 설문 행이 없어도 엑셀 생성을 위해 사용)
+const STATIC_SURVEY_DEF: any = {
+  id: STATIC_SURVEY_ID,
+  title: '내원환자 만족도 조사',
+  description: '고정 설문 (포항시티병원)',
+  createdAt: new Date().toISOString(),
+  backgroundColor: '#0B6B5E',
+  questionGroups: [
+    {
+      id: 'g1',
+      surveyId: STATIC_SURVEY_ID,
+      title: '만족도',
+      order: 0,
+      questions: [
+        {
+          id: 'q1',
+          groupId: 'g1',
+          text: '담당 의료진의 친절한 설명에 만족하셨나요?',
+          order: 0,
+          type: 'scale',
+          includeNoneOption: false,
+          required: false,
+          subQuestions: [],
+        },
+        {
+          id: 'q2',
+          groupId: 'g1',
+          text: '대기 없이 빠른 진료를 받으셨나요?',
+          order: 1,
+          type: 'scale',
+          includeNoneOption: false,
+          required: false,
+          subQuestions: [],
+        },
+        {
+          id: 'q3',
+          groupId: 'g1',
+          text: '최신 장비와 깨끗한 시설에 만족하셨나요?',
+          order: 2,
+          type: 'scale',
+          includeNoneOption: false,
+          required: false,
+          subQuestions: [],
+        },
+        {
+          id: 'q4',
+          groupId: 'g1',
+          text: '1:1 맞춤 상담이 도움이 되셨나요?',
+          order: 3,
+          type: 'scale',
+          includeNoneOption: false,
+          required: false,
+          subQuestions: [],
+        },
+        {
+          id: 'q5',
+          groupId: 'g1',
+          text: '소중한 한마디를 남겨주세요',
+          order: 4,
+          type: 'text',
+          includeNoneOption: false,
+          required: false,
+          subQuestions: [],
+        },
+      ],
+    },
+  ],
+  closingMessage: {
+    text: '설문에 응해주셔서 감사합니다.',
+  },
+  patientInfoConfig: {
+    patientTypeLabel: '환자 유형',
+    patientTypePlaceholder: '환자 유형을 선택하세요',
+    patientTypeOptions: ['외래', '종합검진', '3병동', '6병동'],
+    patientTypeRequired: false,
+    patientNameLabel: '환자 성함',
+    patientNamePlaceholder: '환자성함을 입력하세요 (선택사항)',
+    patientNameRequired: false,
+    additionalQuestions: [],
+  },
+}
+
 const sanitizeSheetName = (name: string) => {
   const cleaned = name.replace(/[\/:*?\[\]]/g, '_')
   return cleaned.length > 31 ? cleaned.slice(0, 31) : cleaned || 'Sheet'
@@ -63,12 +148,17 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const survey = await db.getSurvey(surveyId)
+    let survey = await db.getSurvey(surveyId)
     if (!survey) {
-      return NextResponse.json(
-        { error: 'Survey not found' },
-        { status: 404 }
-      )
+      // 정적 설문 ID인 경우, DB에 설문 행이 없어도 미리 정의한 메타 정보 사용
+      if (surveyId === STATIC_SURVEY_ID) {
+        survey = STATIC_SURVEY_DEF
+      } else {
+        return NextResponse.json(
+          { error: 'Survey not found' },
+          { status: 404 }
+        )
+      }
     }
 
     const from = request.nextUrl.searchParams.get('from')
