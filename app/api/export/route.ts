@@ -933,10 +933,14 @@ export async function GET(request: NextRequest) {
     
     // 1단계: 현재 설문 구조를 기준으로 descriptor 생성 (설문이 수정되지 않은 경우)
     // 모든 질문을 Excel에 포함 (답변이 없어도 질문은 표시)
-    console.log(`[Export] Creating descriptors from survey structure: ${survey.questionGroups.length} groups`)
-    survey.questionGroups.forEach((group, groupIdx) => {
-      console.log(`[Export] Processing group ${groupIdx}: ${group.title}, ${group.questions.length} questions`)
-      group.questions.forEach((question, questionIdx) => {
+    console.log(
+      `[Export] Creating descriptors from survey structure: ${survey.questionGroups.length} groups`,
+    )
+    survey.questionGroups.forEach((group: any, groupIdx: number) => {
+      console.log(
+        `[Export] Processing group ${groupIdx}: ${group.title}, ${group.questions.length} questions`,
+      )
+      group.questions.forEach((question: any, questionIdx: number) => {
         if (question.type === 'text') {
           const key = `${question.id}`
           answerKeyToDescriptor.set(key, {
