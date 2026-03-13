@@ -746,11 +746,11 @@ export async function GET(request: NextRequest) {
 
     // 설문의 질문 ID 목록 로깅
     const surveyQuestionIds: string[] = []
-    survey.questionGroups.forEach((group) => {
-      group.questions.forEach((question) => {
+    survey.questionGroups.forEach((group: any) => {
+      group.questions.forEach((question: any) => {
         surveyQuestionIds.push(question.id)
         if (question.subQuestions.length > 0) {
-          question.subQuestions.forEach((sub) => {
+          question.subQuestions.forEach((sub: any) => {
             surveyQuestionIds.push(`${question.id}-${sub.id}`)
           })
         }
