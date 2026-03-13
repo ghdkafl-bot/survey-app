@@ -148,17 +148,16 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    let survey = await db.getSurvey(surveyId)
+    // 설문 메타 정보 로드
+    // 고정 설문(STATIC_SURVEY_ID)은 DB 구조와 상관없이 항상 코드에 정의된 질문 구조(STATIC_SURVEY_DEF)를 사용한다.
+    // 이렇게 해야 프론트에서 사용하는 질문 ID(q1~q5)와 엑셀 매핑이 정확히 일치한다.
+    let survey =
+      surveyId === STATIC_SURVEY_ID ? STATIC_SURVEY_DEF : await db.getSurvey(surveyId)
     if (!survey) {
-      // 정적 설문 ID인 경우, DB에 설문 행이 없어도 미리 정의한 메타 정보 사용
-      if (surveyId === STATIC_SURVEY_ID) {
-        survey = STATIC_SURVEY_DEF
-      } else {
-        return NextResponse.json(
-          { error: 'Survey not found' },
-          { status: 404 }
-        )
-      }
+      return NextResponse.json(
+        { error: 'Survey not found' },
+        { status: 404 }
+      )
     }
     // 여기까지 왔다면 survey는 항상 정의되어 있음 (TS 협조용 추가 가드)
     if (!survey) {
