@@ -33,6 +33,8 @@ export default function SurveyPage() {
   const [patientType, setPatientType] = useState('')
   const [patientInfoAnswers, setPatientInfoAnswers] = useState<Record<string, string[]>>({})
   const [submitting, setSubmitting] = useState(false)
+  const [step, setStep] = useState<'intro' | 'survey' | 'complete'>('intro')
+  const [currentIndex, setCurrentIndex] = useState(0)
   const patientInfoSectionRef = useRef<HTMLDivElement | null>(null)
   const patientTypeSelectRef = useRef<HTMLSelectElement | null>(null)
 
@@ -68,6 +70,37 @@ export default function SurveyPage() {
     }
   }, [params.id])
 
+  type FlatQuestion = {
+    question: Question
+    subQuestionId?: string
+    subQuestionText?: string
+  }
+
+  const flatQuestions = useMemo<FlatQuestion[]>(() => {
+    if (!survey) return []
+    const list: FlatQuestion[] = []
+
+    survey.questionGroups.forEach((group) => {
+      group.questions.forEach((q) => {
+        if (q.type === 'scale' && q.subQuestions.length > 0) {
+          q.subQuestions.forEach((sub) => {
+            list.push({
+              question: q,
+              subQuestionId: sub.id,
+              subQuestionText: sub.text,
+            })
+          })
+        } else {
+          list.push({ question: q })
+        }
+      })
+    })
+
+    return list
+  }, [survey])
+
+  const totalQuestions = flatQuestions.length
+
   const fetchSurvey = async (id: string) => {
     try {
       const res = await fetch(`/api/surveys/${id}`, { cache: 'no-store' })
@@ -94,6 +127,8 @@ export default function SurveyPage() {
       setPatientType('')
       setPatientName('')
       setPatientInfoAnswers({})
+      setStep('intro')
+      setCurrentIndex(0)
     } catch (error) {
       console.error('Failed to fetch survey:', error)
       window.alert('설문을 불러오지 못했습니다.')
@@ -170,6 +205,28 @@ export default function SurveyPage() {
       }
     }
     return { valid: true }
+  }
+
+  const startSurvey = () => {
+    if (!survey || totalQuestions === 0) return
+    setStep('survey')
+    setCurrentIndex(0)
+  }
+
+  const goNext = () => {
+    if (!survey || totalQuestions === 0) return
+    if (currentIndex >= totalQuestions - 1) {
+      const form = document.getElementById('survey-form') as HTMLFormElement | null
+      if (form) {
+        form.requestSubmit()
+      }
+      return
+    }
+    setCurrentIndex((prev) => Math.min(prev + 1, totalQuestions - 1))
+  }
+
+  const goPrev = () => {
+    setCurrentIndex((prev) => Math.max(prev - 1, 0))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -249,8 +306,7 @@ export default function SurveyPage() {
       })
 
       if (res.ok) {
-        alert('설문이 제출되었습니다. 감사합니다!')
-        router.push('/')
+        setStep('complete')
       } else {
         alert('설문 제출에 실패했습니다.')
       }
@@ -274,286 +330,300 @@ export default function SurveyPage() {
 
   const bgColor = survey.backgroundColor || '#f0f9ff'
   const closingMessage: ClosingMessage | undefined = survey.closingMessage
-
+ 
   return (
-    <main className="min-h-screen py-6 px-4 sm:px-6" style={{ backgroundColor: bgColor }}>
-      <div className="mx-auto w-full max-w-2xl">
-        <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-md p-6 sm:p-8 space-y-6">
-          <div>
-            <Link href="/" className="text-sm text-blue-500 hover:text-blue-600">
-              ← 설문 목록으로
-            </Link>
-            <h1 className="mt-3 text-3xl font-bold text-gray-800">{survey.title}</h1>
-            {survey.description && (
-              <p className="mt-2 text-sm sm:text-base text-gray-600">{survey.description}</p>
-            )}
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-8">
-            <section
-              ref={patientInfoSectionRef}
-              className="p-5 sm:p-6 bg-gradient-to-br from-slate-50 to-white rounded-xl border border-gray-200"
+    <main className="min-h-screen bg-[#0B6B5E] text-slate-900" style={{ backgroundColor: bgColor }}>
+      <div className="mx-auto w-full max-w-md min-h-screen flex flex-col">
+        {step === 'intro' && (
+          <section className="flex-1 flex flex-col items-center justify-center px-7 py-10 text-center bg-gradient-to-br from-[#0B6B5E] via-[#10957F] to-[#15BFA5]">
+            <div className="inline-flex items-center gap-2 mb-8 px-4 py-2 rounded-full border border-white/20 bg-white/15 text-xs font-medium text-white/90">
+              🏥 {survey.title || '내원환자 만족도 조사'}
+            </div>
+            <div className="w-20 h-20 mb-7 rounded-3xl border border-white/20 bg-white/15 flex items-center justify-center text-4xl text-white">
+              📋
+            </div>
+            <h1 className="text-2xl font-extrabold text-white leading-snug mb-3">
+              소중한 내원에
+              <br />
+              감사드립니다
+            </h1>
+            <p className="text-sm text-white/80 leading-relaxed mb-8">
+              더 나은 진료를 위해
+              <br />
+              간단한 만족도 조사에 참여해 주세요
+            </p>
+            <div className="flex flex-wrap justify-center gap-2 mb-10 text-xs text-white/90">
+              <span className="px-3 py-1 rounded-full border border-white/25 bg-white/10">
+                ⚡ {totalQuestions || 1}문항
+              </span>
+              <span className="px-3 py-1 rounded-full border border-white/25 bg-white/10">⏱ 1분 이내</span>
+              <span className="px-3 py-1 rounded-full border border-white/25 bg-white/10">🔒 익명 보장</span>
+            </div>
+            <button
+              type="button"
+              onClick={startSurvey}
+              className="w-full max-w-xs py-4 rounded-2xl bg-white text-[#0F7B6C] font-bold text-base shadow-lg active:scale-95 transition-transform"
             >
-              <h2 className="text-lg font-semibold text-gray-800 mb-4">환자 정보</h2>
-              <div className="space-y-4 sm:grid sm:grid-cols-2 sm:gap-4 sm:space-y-0">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {patientInfoConfig.patientTypeLabel}
-                    {patientInfoConfig.patientTypeRequired && <span className="text-red-500"> *</span>}
-                  </label>
-                  <select
-                    ref={patientTypeSelectRef}
-                    value={patientType}
-                    onChange={(e) => setPatientType(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
-                    style={{
-                      color: patientType ? '#111827' : '#9ca3af',
-                    }}
-                  >
-                    <option value="">{patientInfoConfig.patientTypePlaceholder}</option>
-                    {patientInfoConfig.patientTypeOptions.map((option) => (
-                      <option key={option} value={option} className="text-gray-900">
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {patientInfoConfig.patientNameLabel}
-                    {patientInfoConfig.patientNameRequired && <span className="text-red-500"> *</span>}
-                  </label>
-                  <input
-                    value={patientName}
-                    onChange={(e) => setPatientName(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-                    placeholder={patientInfoConfig.patientNamePlaceholder}
-                  />
-                </div>
+              설문 시작하기
+            </button>
+            <p className="mt-4 text-[13px] text-white/70">탭 한 번으로 간편하게 응답할 수 있어요</p>
+          </section>
+        )}
+ 
+        {step === 'survey' && flatQuestions.length > 0 && (
+          <section className="flex-1 flex flex-col bg-[#F5F7F6]">
+            <header className="sticky top-0 z-10 bg-white border-b border-[#E2EBE9] px-5 py-4">
+              <div className="flex items-center justify-between mb-2 text-[13px] font-semibold text-[#4A6360]">
+                <span>진행률</span>
+                <span>
+                  <span className="text-[#0F7B6C]">{currentIndex + 1}</span> / {totalQuestions}
+                </span>
               </div>
-
-              {patientInfoConfig.additionalQuestions && patientInfoConfig.additionalQuestions.length > 0 && (
-                <div className="mt-6 space-y-4 border-t border-gray-200 pt-4">
-                  <h3 className="text-md font-semibold text-gray-800">추가 질문</h3>
-                  {patientInfoConfig.additionalQuestions.map((question: PatientInfoQuestion) => {
-                    const selectedOptions = patientInfoAnswers[question.id] || []
-                    return (
-                      <div key={question.id} className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700">
-                          {question.text}
-                          {question.required && <span className="text-red-500"> *</span>}
-                        </label>
-                        <div className="flex flex-wrap gap-2">
-                          {question.options.map((option) => {
-                            const isSelected = selectedOptions.includes(option)
-                            return (
-                              <button
-                                key={option}
-                                type="button"
-                                onClick={() => handlePatientInfoAnswer(question.id, option)}
-                                className={`px-4 py-2 border rounded-lg text-sm font-medium transition-colors ${
-                                  isSelected
-                                    ? 'bg-blue-500 border-blue-500 text-white'
-                                    : 'bg-white border-gray-300 text-gray-700 hover:bg-blue-50'
-                                }`}
-                              >
-                                {option}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </section>
-
-            <div className="space-y-6">
-              {survey.questionGroups.map((group, groupIndex) => (
-                <section key={group.id} className="space-y-4">
-                  <h2 className="text-xl font-bold text-gray-800 pb-2 border-b-2 border-blue-500">
-                    {groupIndex + 1}. {group.title}
-                  </h2>
-                  <div className="space-y-4">
-                    {group.questions.map((question, questionIndex) => {
-                      const renderScale = () => (
-                        <div className="space-y-3">
-                          {question.subQuestions.length > 0 ? (
-                            <>
-                              {question.required && (
-                                <p className="text-sm text-gray-500 mb-2">* 필수 항목입니다</p>
-                              )}
-                              {question.subQuestions.map((sub, subIndex) => {
-                                const key = makeKey(question.id, sub.id)
-                                const selectedValue = answers[key]
-                                return (
-                                  <div key={sub.id} className="space-y-2">
-                                    <p className="font-medium text-gray-700">
-                                      {questionIndex + 1}-{subIndex + 1}. {sub.text}
-                                    </p>
-                                  <div className="flex flex-wrap sm:grid sm:grid-cols-6 gap-2">
-                                    {[1, 2, 3, 4, 5].map((value) => (
-                                      <label
-                                        key={value}
-                                        onClick={(e) => {
-                                          e.preventDefault()
-                                          handleScaleAnswer(question.id, value, sub.id, question.includeNoneOption)
-                                        }}
-                                        className={`flex-1 basis-[30%] sm:basis-auto min-w-[70px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${selectedValue === value ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
-                                      >
-                                        <input
-                                          type="radio"
-                                          name={key}
-                                          value={value}
-                                          checked={selectedValue === value}
-                                          onChange={() => {}}
-                                          onClick={(e) => e.preventDefault()}
-                                          className="sr-only"
-                                        />
-                                        <span className="text-sm font-medium">{value}점</span>
-                                      </label>
-                                    ))}
-                                    {question.includeNoneOption && (
-                                      <label
-                                        onClick={(e) => {
-                                          e.preventDefault()
-                                          handleScaleAnswer(question.id, null, sub.id, true)
-                                        }}
-                                        className={`flex-1 basis-[30%] sm:basis-auto min-w-[70px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${selectedValue === null ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
-                                      >
-                                        <input
-                                          type="radio"
-                                          name={key}
-                                          value=""
-                                          checked={selectedValue === null}
-                                          onChange={() => {}}
-                                          onClick={(e) => e.preventDefault()}
-                                          className="sr-only"
-                                        />
-                                        <span className="text-sm font-medium whitespace-nowrap">해당없음</span>
-                                      </label>
-                                    )}
-                                  </div>
-                                </div>
-                              )
-                            })}
-                            </>
-                          ) : (
-                            <div className="space-y-2">
-                              {question.required && (
-                                <p className="text-sm text-gray-500">* 필수 항목입니다</p>
-                              )}
-                              <div className="flex flex-wrap sm:grid sm:grid-cols-6 gap-2">
-                                {[1, 2, 3, 4, 5].map((value) => {
-                                  const key = makeKey(question.id)
-                                  const selectedValue = answers[key]
+              <div className="h-1.5 rounded-full bg-[#E2EBE9] overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-[#0F7B6C] to-[#12A692] transition-all"
+                  style={{ width: `${((currentIndex + 1) / totalQuestions) * 100}%` }}
+                />
+              </div>
+            </header>
+ 
+            <form
+              id="survey-form"
+              onSubmit={handleSubmit}
+              className="flex-1 flex flex-col px-5 pb-6 pt-7 space-y-6"
+            >
+              <section
+                ref={patientInfoSectionRef}
+                className="mb-5 p-4 rounded-2xl bg-white shadow-sm border border-[#E2EBE9]"
+              >
+                <h2 className="text-base font-semibold text-gray-800 mb-4">환자 정보</h2>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-2">
+                        {patientInfoConfig.patientTypeLabel}
+                        {patientInfoConfig.patientTypeRequired && <span className="text-red-500"> *</span>}
+                      </label>
+                      <select
+                        ref={patientTypeSelectRef}
+                        value={patientType}
+                        onChange={(e) => setPatientType(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0F7B6C] focus:border-transparent bg-white text-gray-900 text-sm"
+                        style={{
+                          color: patientType ? '#111827' : '#9ca3af',
+                        }}
+                      >
+                        <option value="">{patientInfoConfig.patientTypePlaceholder}</option>
+                        {patientInfoConfig.patientTypeOptions.map((option) => (
+                          <option key={option} value={option} className="text-gray-900">
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-2">
+                        {patientInfoConfig.patientNameLabel}
+                        {patientInfoConfig.patientNameRequired && <span className="text-red-500"> *</span>}
+                      </label>
+                      <input
+                        value={patientName}
+                        onChange={(e) => setPatientName(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0F7B6C] focus:border-transparent text-gray-900 text-sm"
+                        placeholder={patientInfoConfig.patientNamePlaceholder}
+                      />
+                    </div>
+                  </div>
+ 
+                  {patientInfoConfig.additionalQuestions &&
+                    patientInfoConfig.additionalQuestions.length > 0 && (
+                      <div className="mt-4 space-y-3 border-t border-gray-200 pt-3">
+                        <h3 className="text-xs font-semibold text-gray-800">추가 질문</h3>
+                        {patientInfoConfig.additionalQuestions.map((question: PatientInfoQuestion) => {
+                          const selectedOptions = patientInfoAnswers[question.id] || []
+                          return (
+                            <div key={question.id} className="space-y-1.5">
+                              <label className="block text-[13px] font-medium text-gray-700">
+                                {question.text}
+                                {question.required && <span className="text-red-500"> *</span>}
+                              </label>
+                              <div className="flex flex-wrap gap-2">
+                                {question.options.map((option) => {
+                                  const isSelected = selectedOptions.includes(option)
                                   return (
-                                    <label
-                                      key={value}
-                                      onClick={(e) => {
-                                        e.preventDefault()
-                                        handleScaleAnswer(question.id, value, undefined, question.includeNoneOption)
-                                      }}
-                                      className={`flex-1 basis-[30%] sm:basis-auto min-w-[70px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${selectedValue === value ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
+                                    <button
+                                      key={option}
+                                      type="button"
+                                      onClick={() => handlePatientInfoAnswer(question.id, option)}
+                                      className={`px-3 py-1.5 border rounded-lg text-[13px] font-medium transition-colors ${
+                                        isSelected
+                                          ? 'bg-[#0F7B6C] border-[#0F7B6C] text-white'
+                                          : 'bg-white border-gray-300 text-gray-700 hover:bg-[#E6F5F2]'
+                                      }`}
                                     >
-                                      <input
-                                        type="radio"
-                                        name={key}
-                                        value={value}
-                                        checked={selectedValue === value}
-                                        onChange={() => {}}
-                                        onClick={(e) => e.preventDefault()}
-                                        className="sr-only"
-                                      />
-                                      <span className="text-sm font-medium">{value}점</span>
-                                    </label>
+                                      {option}
+                                    </button>
                                   )
                                 })}
-                                {question.includeNoneOption && (
-                                  <label
-                                    onClick={(e) => {
-                                      e.preventDefault()
-                                      handleScaleAnswer(question.id, null, undefined, true)
-                                    }}
-                                    className={`flex-1 basis-[30%] sm:basis-auto min-w-[70px] flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-colors ${answers[makeKey(question.id)] === null ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-200 text-gray-700 hover:bg-blue-50'}`}
-                                  >
-                                    <input
-                                      type="radio"
-                                      name={makeKey(question.id)}
-                                      value=""
-                                      checked={answers[makeKey(question.id)] === null}
-                                      onChange={() => {}}
-                                      onClick={(e) => e.preventDefault()}
-                                      className="sr-only"
-                                    />
-                                    <span className="text-sm font-medium whitespace-nowrap">해당없음</span>
-                                  </label>
-                                )}
                               </div>
                             </div>
-                          )}
-                        </div>
-                      )
-
-                      const renderText = () => {
-                        const key = makeKey(question.id)
-                        const value = answers[key]
-                        return (
-                          <textarea
-                            value={typeof value === 'string' ? value : ''}
-                            onChange={(e) => handleTextAnswer(question.id, e.target.value)}
-                            className="w-full mt-2 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-                            rows={4}
-                            placeholder="자유롭게 의견을 작성해주세요."
-                          />
-                        )
-                      }
-
-                      return (
-                        <article key={question.id} data-question-id={question.id} className="rounded-xl border border-gray-200 p-4 bg-white shadow-sm">
-                          <h3 className="text-base sm:text-lg font-semibold text-gray-800">
-                            {questionIndex + 1}. {question.text}
-                            {question.required && <span className="text-red-500 ml-1">*</span>}
-                          </h3>
-                          {question.type === 'text' ? renderText() : renderScale()}
-                        </article>
-                      )
-                    })}
-                  </div>
-                </section>
-              ))}
-            </div>
-
-            {closingMessage?.text && (
-              <section className="rounded-xl border border-gray-200 bg-slate-50 p-5">
-                <p
-                  style={{
-                    color: closingMessage.color || '#1f2937',
-                    fontSize: `${closingMessage.fontSize || 18}px`,
-                    fontWeight: closingMessage.fontWeight || '600',
-                    fontStyle: closingMessage.fontStyle || 'normal',
-                    textAlign: closingMessage.textAlign || 'center',
-                    fontFamily: closingMessage.fontFamily || 'inherit',
-                    lineHeight: 1.6,
-                  }}
-                >
-                  {closingMessage.text}
-                </p>
+                          )
+                        })}
+                      </div>
+                    )}
+                </div>
               </section>
-            )}
-
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-              <button
-                type="submit"
-                disabled={submitting}
-                className="sm:flex-1 px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white rounded-lg font-semibold transition-colors"
-              >
-                {submitting ? '제출 중...' : '설문 제출'}
-              </button>
+ 
+              {(() => {
+                const item = flatQuestions[currentIndex]
+                const q = item.question
+                const key = makeKey(q.id, item.subQuestionId)
+                const value = answers[key]
+ 
+                const isScale = q.type === 'scale'
+                const isText = q.type === 'text'
+ 
+                return (
+                  <div className="flex-1 flex flex-col" data-question-id={q.id}>
+                    <span className="inline-flex px-3 py-1 mb-4 text-[13px] font-bold text-[#0F7B6C] bg-[#E6F5F2] rounded-full">
+                      Q{currentIndex + 1}
+                    </span>
+                    <h2
+                      className="text-[20px] font-bold text-[#1A2B2A] leading-snug mb-2"
+                      dangerouslySetInnerHTML={{ __html: q.text }}
+                    />
+                    {item.subQuestionText && (
+                      <p className="text-sm text-[#4A6360] mb-1">{item.subQuestionText}</p>
+                    )}
+                    {q.required && (
+                      <p className="text-[13px] text-[#8FA3A0] mb-4">* 필수 항목입니다</p>
+                    )}
+ 
+                    {isScale && (
+                      <div className="mt-auto flex gap-2">
+                        {[1, 2, 3, 4, 5].map((score) => {
+                          const selected = value === score
+                          const label =
+                            score === 5
+                              ? '매우 만족'
+                              : score === 4
+                              ? '만족'
+                              : score === 3
+                              ? '보통'
+                              : score === 2
+                              ? '아쉬움'
+                              : '매우 아쉬움'
+                          const icon =
+                            score === 5
+                              ? '😍'
+                              : score === 4
+                              ? '😊'
+                              : score === 3
+                              ? '😐'
+                              : score === 2
+                              ? '😕'
+                              : '😣'
+ 
+                          return (
+                            <button
+                              key={score}
+                              type="button"
+                              onClick={() =>
+                                handleScaleAnswer(q.id, score, item.subQuestionId, q.includeNoneOption)
+                              }
+                              className={`flex-1 flex flex-col items-center justify-center gap-2 px-2 py-4 rounded-2xl border text-xs font-semibold shadow-sm transition-all ${
+                                selected
+                                  ? 'border-[#0F7B6C] bg-[#E6F5F2] shadow-md scale-[1.04]'
+                                  : 'border-[#E2EBE9] bg-white'
+                              }`}
+                            >
+                              <span className="text-2xl">{icon}</span>
+                              <span className={selected ? 'text-[#0F7B6C]' : 'text-[#8FA3A0]'}>
+                                {label}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+ 
+                    {isText && (
+                      <div className="mt-auto">
+                        <textarea
+                          value={typeof value === 'string' ? value : ''}
+                          onChange={(e) => handleTextAnswer(q.id, e.target.value)}
+                          className="w-full min-h-[140px] px-4 py-4 rounded-2xl border-2 border-[#E2EBE9] bg-white text-[15px] text-[#1A2B2A] shadow-sm outline-none focus:border-[#0F7B6C] focus:ring-2 focus:ring-[#0F7B6C]/20 resize-none"
+                          placeholder="예: 원장님이 정말 친절하게 설명해 주셔서 좋았어요!"
+                        />
+                        {!q.required && (
+                          <p className="mt-2 text-[13px] text-[#8FA3A0] text-center">
+                            건너뛰셔도 괜찮아요
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+ 
+              <div className="mt-6 flex gap-3">
+                {currentIndex > 0 && (
+                  <button
+                    type="button"
+                    onClick={goPrev}
+                    className="px-5 py-3 rounded-xl border border-[#E2EBE9] bg-[#F5F7F6] text-sm font-semibold text-[#4A6360]"
+                  >
+                    이전
+                  </button>
+                )}
+                <button
+                  type={currentIndex === totalQuestions - 1 ? 'submit' : 'button'}
+                  onClick={currentIndex === totalQuestions - 1 ? undefined : goNext}
+                  disabled={
+                    submitting ||
+                    (flatQuestions[currentIndex].question.type === 'scale' &&
+                      answers[
+                        makeKey(
+                          flatQuestions[currentIndex].question.id,
+                          flatQuestions[currentIndex].subQuestionId
+                        )
+                      ] == null)
+                  }
+                  className="flex-1 px-5 py-3 rounded-xl bg-gradient-to-r from-[#0F7B6C] to-[#12A692] text-white font-bold text-sm shadow-md disabled:bg-[#E2EBE9] disabled:text-[#8FA3A0] disabled:shadow-none"
+                >
+                  {submitting
+                    ? '제출 중...'
+                    : currentIndex === totalQuestions - 1
+                    ? '제출하기'
+                    : '다음'}
+                </button>
+              </div>
+            </form>
+          </section>
+        )}
+ 
+        {step === 'complete' && (
+          <section className="flex-1 flex flex-col items-center justify-center px-7 py-10 bg-[#F5F7F6] text-center">
+            <div className="w-24 h-24 mb-7 rounded-full bg-[#E6F5F2] flex items-center justify-center text-4xl">
+              🎉
             </div>
-          </form>
-        </div>
+            <h2 className="text-2xl font-extrabold text-[#1A2B2A] mb-3">감사합니다!</h2>
+            <p className="text-sm text-[#4A6360] leading-relaxed mb-8">
+              소중한 의견을 반영하여
+              <br />
+              <span className="font-bold text-[#0F7B6C]">더 나은 1:1 맞춤 진료</span>로
+              <br />
+              보답하겠습니다
+            </p>
+            <button
+              type="button"
+              onClick={() => router.push('/')}
+              className="px-10 py-3 rounded-xl bg-[#0F7B6C] text-white font-semibold shadow-md active:scale-95 transition-transform"
+            >
+              닫기
+            </button>
+          </section>
+        )}
       </div>
     </main>
   )
