@@ -123,6 +123,32 @@ const DEFAULT_CLOSING_MESSAGE: ClosingMessage = {
 const DEPRECATED_GROUP_IDS = ['__free_opinion_group']
 const DEPRECATED_QUESTION_IDS = ['__free_opinion_praise', '__free_opinion_improve']
 
+/** 그룹/질문 order 기준으로 설문 질문 ID를 평탄화 (고정 설문 q1~qN ↔ DB UUID 매핑용) */
+export function getOrderedSurveyQuestionIds(survey: Survey): string[] {
+  return [...survey.questionGroups]
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .flatMap((g) => [...g.questions].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)))
+    .map((q) => q.id)
+}
+
+/** 프론트의 q1, q2 … 별칭을 Supabase questions.id(UUID)로 치환. answers.question_id FK와 맞추기 위함 */
+export function resolveClientQuestionIdForDb(survey: Survey | undefined, clientId: string): string {
+  if (!survey) return clientId
+  const m = /^q(\d+)$/.exec(clientId)
+  if (!m) return clientId
+  const idx = parseInt(m[1], 10) - 1
+  if (idx < 0) return clientId
+  const ordered = getOrderedSurveyQuestionIds(survey)
+  return ordered[idx] ?? clientId
+}
+
+export function buildQAliasToDbQuestionIdMap(survey: Survey | undefined): Map<string, string> {
+  const map = new Map<string, string>()
+  if (!survey) return map
+  getOrderedSurveyQuestionIds(survey).forEach((id, i) => map.set(`q${i + 1}`, id))
+  return map
+}
+
 const normalizeQuestion = (question: any, groupId: string, fallbackIdPrefix: string, index: number): Question => {
   const questionId = question?.id || `${fallbackIdPrefix}-q-${index}`
   const type: QuestionType = question?.type === 'text' ? 'text' : 'scale'
@@ -319,16 +345,28 @@ const mapResponseRecord = (record: any): Response => {
   
   const mappedAnswers = answersArray
     .map((answer: any) => {
-      // answer가 객체인지 확인
       if (!answer || typeof answer !== 'object') {
         console.warn(`[DB] mapResponseRecord - Invalid answer format:`, answer)
         return null
       }
+      const questionId = answer.question_id ?? answer.questionId
+      if (questionId == null || questionId === '') return null
+      const rawValue = answer.value
+      let value: number | null | undefined
+      if (typeof rawValue === 'number' && !Number.isNaN(rawValue)) value = rawValue
+      else if (rawValue === null) value = null
+      else if (typeof rawValue === 'string' && rawValue.trim() !== '') {
+        const n = Number(rawValue)
+        value = Number.isNaN(n) ? undefined : n
+      } else value = undefined
+      const textValue = typeof (answer.text_value ?? answer.textValue) === 'string'
+        ? (answer.text_value ?? answer.textValue)
+        : undefined
       return {
-        questionId: answer.question_id,
-        subQuestionId: answer.sub_question_id ?? undefined,
-        value: typeof answer.value === 'number' ? answer.value : answer.value === null ? null : undefined,
-        textValue: typeof answer.text_value === 'string' ? answer.text_value : undefined,
+        questionId: String(questionId),
+        subQuestionId: answer.sub_question_id ?? answer.subQuestionId ?? undefined,
+        value,
+        textValue: textValue || undefined,
       } as Answer
     })
     .filter((a): a is Answer => a !== null)
@@ -561,42 +599,16 @@ export const db = {
     if (response.answers.length > 0) {
       // 질문 정보를 함께 저장하기 위해 현재 설문 정보 조회
       const survey = await db.getSurvey(response.surveyId)
-      
-      // 질문 ID와 그룹 제목, 질문 텍스트 매핑 생성
-      const questionInfoMap = new Map<string, { text: string; groupTitle: string; type: string }>()
-      const subQuestionInfoMap = new Map<string, { text: string }>()
-      
-      if (survey) {
-        survey.questionGroups.forEach((group) => {
-          group.questions.forEach((question) => {
-            questionInfoMap.set(question.id, {
-              text: question.text,
-              groupTitle: group.title,
-              type: question.type,
-            })
-            question.subQuestions.forEach((sub) => {
-              subQuestionInfoMap.set(sub.id, {
-                text: sub.text,
-              })
-            })
-          })
-        })
-      }
-      
+
       const answerPayload = response.answers.map((answer) => {
-        const questionInfo = questionInfoMap.get(answer.questionId)
-        const subQuestionInfo = answer.subQuestionId 
-          ? subQuestionInfoMap.get(answer.subQuestionId)
-          : null
-        
+        const resolvedQuestionId = resolveClientQuestionIdForDb(survey, answer.questionId)
+
         return {
           response_id: insertedResponse.id,
-          question_id: answer.questionId,
+          question_id: resolvedQuestionId,
           sub_question_id: answer.subQuestionId ?? null,
           value: typeof answer.value === 'number' ? answer.value : null,
           text_value: typeof answer.textValue === 'string' ? answer.textValue : null,
-          // 질문 정보를 JSONB 컬럼에 저장 (추후 스키마 변경 필요 시 사용)
-          // 현재는 question_id로만 저장하고, Excel 다운로드 시 질문 정보를 조회
         }
       })
 

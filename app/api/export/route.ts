@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db, Answer } from '@/lib/db'
+import { db, Answer, buildQAliasToDbQuestionIdMap } from '@/lib/db'
 import { getSupabaseServiceClient } from '@/lib/supabaseClient'
 import * as XLSX from 'xlsx'
 
@@ -1151,75 +1151,29 @@ export async function GET(request: NextRequest) {
     })
 
 
-    // 환자 유형별로 그룹화
-    const grouped = new Map<string, typeof responses>()
-    const patientTypeCounts = new Map<string, number>()
-    
-    responses.forEach((response) => {
-      // 환자 유형 정규화 (공백 제거)
-      const typeKey = (response.patientType || '미입력').trim()
-      if (!grouped.has(typeKey)) {
-        grouped.set(typeKey, [])
-        patientTypeCounts.set(typeKey, 0)
-      }
-      grouped.get(typeKey)!.push(response)
-      patientTypeCounts.set(typeKey, (patientTypeCounts.get(typeKey) || 0) + 1)
-    })
-    
-    console.log(`[Export] Grouped by patient type:`, Array.from(patientTypeCounts.entries()).map(([type, count]) => `${type}: ${count}`))
-    console.log(`[Export] All patient types in responses:`, Array.from(new Set(responses.map(r => (r.patientType || 'null').trim()))))
-    
-    // "종합검진" 그룹이 있는지 확인
-    if (grouped.has('종합검진')) {
-      const 종합검진Group = grouped.get('종합검진')!
-      console.log(`[Export] 종합검진 group has ${종합검진Group.length} responses`)
-      if (종합검진Group.length > 0) {
-        console.log(`[Export] First 종합검진 response in group:`, {
-          id: 종합검진Group[0].id,
-          patientType: 종합검진Group[0].patientType,
-          submittedAt: 종합검진Group[0].submittedAt,
-          answersCount: 종합검진Group[0].answers?.length || 0,
-          answers: 종합검진Group[0].answers?.slice(0, 3),
-        })
-      }
-    } else {
-      console.warn(`[Export] 종합검진 group not found! Available groups:`, Array.from(grouped.keys()))
-      // 환자 유형에 공백이 있을 수 있으므로 확인
-      const 종합검진WithSpace = responses.filter(r => {
-        const type = (r.patientType || '').trim()
-        return type === '종합검진' || type.includes('종합검진')
-      })
-      if (종합검진WithSpace.length > 0) {
-        console.warn(`[Export] Found ${종합검진WithSpace.length} responses with "종합검진" in patient type (with spaces):`, 
-          종합검진WithSpace.map(r => ({ id: r.id, patientType: `"${r.patientType}"` })))
-      }
-    }
+    // 고정 설문: 엑셀 헤더는 q1~q5(STATIC_SURVEY_DEF)인데 DB answers에는 질문 UUID가 저장됨 → 매칭용 맵
+    const surveyFromDbForAliases =
+      surveyId === STATIC_SURVEY_ID ? await db.getSurvey(surveyId) : undefined
+    const staticQAliasToDbId = surveyFromDbForAliases
+      ? buildQAliasToDbQuestionIdMap(surveyFromDbForAliases)
+      : null
 
     const wb = XLSX.utils.book_new()
 
-    if (grouped.size === 0) {
+    const sortedAllResponses = [...responses].sort((a, b) => {
+      const dateA = new Date(a.submittedAt).getTime()
+      const dateB = new Date(b.submittedAt).getTime()
+      return dateB - dateA
+    })
+
+    if (responses.length === 0) {
       const ws = XLSX.utils.aoa_to_sheet([headers])
       ws['!cols'] = headers.map(() => ({ wch: 30 }))
-      XLSX.utils.book_append_sheet(wb, ws, sanitizeSheetName('응답없음'))
+      XLSX.utils.book_append_sheet(wb, ws, sanitizeSheetName('전체'))
     } else {
-      grouped.forEach((groupResponses, typeKey) => {
-        console.log(`[Export] Processing sheet "${typeKey}" with ${groupResponses.length} responses`)
-        const excelData: any[] = [headers]
+      const excelData: any[] = [headers]
 
-        // 응답을 제출일시 기준으로 정렬 (최신순)
-        const sortedGroupResponses = [...groupResponses].sort((a, b) => {
-          const dateA = new Date(a.submittedAt).getTime()
-          const dateB = new Date(b.submittedAt).getTime()
-          return dateB - dateA // 최신순 (내림차순)
-        })
-        
-        console.log(`[Export] Sheet "${typeKey}": Processing ${sortedGroupResponses.length} responses (sorted by date, newest first)`)
-        if (sortedGroupResponses.length > 0) {
-          console.log(`[Export] Sheet "${typeKey}": Latest response date: ${sortedGroupResponses[0].submittedAt}`)
-          console.log(`[Export] Sheet "${typeKey}": Oldest response date: ${sortedGroupResponses[sortedGroupResponses.length - 1].submittedAt}`)
-        }
-        
-        sortedGroupResponses.forEach((response, responseIndex) => {
+      sortedAllResponses.forEach((response, responseIndex) => {
           // 제출일시를 한국 시간(KST, UTC+9)으로 변환하여 읽기 쉬운 형식으로 표시 (YYYY-MM-DD HH:mm:ss)
           let formattedDate = response.submittedAt
           try {
@@ -1283,7 +1237,7 @@ export async function GET(request: NextRequest) {
           ]
 
           if (responseIndex === 0) {
-            console.log(`[Export] Processing first response in sheet "${typeKey}":`, {
+            console.log(`[Export] Processing first response in sheet "전체":`, {
               responseId: response.id,
               answersCount: response.answers?.length || 0,
               answers: response.answers?.map((a: Answer) => ({
@@ -1309,14 +1263,16 @@ export async function GET(request: NextRequest) {
 
           let matchedAnswers = 0
           sortedDescriptors.forEach((desc: Descriptor, descIndex: number) => {
-            // 답변 찾기: questionId와 subQuestionId로 정확히 매칭
+            const norm = (id: string | undefined) => (id == null ? '' : String(id))
+            const dbIdForDesc = staticQAliasToDbId?.get(desc.questionId)
             const answer = response.answers?.find((a: Answer) => {
-              const questionMatch = a.questionId === desc.questionId
+              const idMatches =
+                norm(a.questionId) === norm(desc.questionId) ||
+                (dbIdForDesc != null && norm(a.questionId) === norm(dbIdForDesc))
               if (desc.subQuestionId) {
-                return questionMatch && a.subQuestionId === desc.subQuestionId
-              } else {
-                return questionMatch && !a.subQuestionId
+                return idMatches && norm(a.subQuestionId) === norm(desc.subQuestionId)
               }
+              return idMatches && (a.subQuestionId == null || a.subQuestionId === '')
             })
 
             if (responseIndex === 0 && descIndex < 5) {
@@ -1338,20 +1294,18 @@ export async function GET(request: NextRequest) {
               matchedAnswers++
             }
 
-            // 답변이 없어도 빈 셀로 표시 (질문은 항상 Excel에 포함)
             if (!answer) {
-              row.push('') // 답변 없음 - 빈 셀로 표시
+              row.push('')
             } else if (desc.isText) {
-              // 주관식 답변
-              row.push(answer.textValue || '')
+              row.push(typeof answer.textValue === 'string' ? answer.textValue : '')
             } else {
-              // 객관식 답변
               if (answer.value === null) {
-          row.push('해당없음')
-              } else if (typeof answer.value === 'number') {
+                row.push('해당없음')
+              } else if (typeof answer.value === 'number' && !Number.isNaN(answer.value)) {
                 row.push(answer.value)
               } else {
-                row.push('') // 값이 없으면 빈 셀
+                const num = typeof answer.value === 'string' ? Number(answer.value) : Number(answer.value)
+                row.push(Number.isNaN(num) ? '' : num)
               }
             }
           })
@@ -1373,8 +1327,10 @@ export async function GET(request: NextRequest) {
             const unmatchedAnswers = response.answers?.filter((a: Answer) => {
               const key = a.subQuestionId ? `${a.questionId}:${a.subQuestionId}` : a.questionId
               return !sortedDescriptors.some((d: Descriptor) => {
+                const dbId = staticQAliasToDbId?.get(d.questionId)
                 const descKey = d.subQuestionId ? `${d.questionId}:${d.subQuestionId}` : d.questionId
-                return descKey === key
+                const descKeyDb = dbId && !d.subQuestionId ? dbId : null
+                return descKey === key || (descKeyDb != null && descKeyDb === key)
               })
             })
             if (unmatchedAnswers && unmatchedAnswers.length > 0) {
@@ -1385,13 +1341,15 @@ export async function GET(request: NextRequest) {
             if (matchedAnswers > 0) {
               console.log(`[Export] Matched answers details:`, 
                 sortedDescriptors.slice(0, 10).map((desc: Descriptor, idx: number) => {
+                  const dbId = staticQAliasToDbId?.get(desc.questionId)
                   const answer = response.answers?.find((a: Answer) => {
-                    const questionMatch = a.questionId === desc.questionId
+                    const idMatches =
+                      a.questionId === desc.questionId ||
+                      (dbId != null && a.questionId === dbId)
                     if (desc.subQuestionId) {
-                      return questionMatch && a.subQuestionId === desc.subQuestionId
-        } else {
-                      return questionMatch && !a.subQuestionId
+                      return idMatches && a.subQuestionId === desc.subQuestionId
                     }
+                    return idMatches && !a.subQuestionId
                   })
                   return {
                     index: idx,
@@ -1405,30 +1363,30 @@ export async function GET(request: NextRequest) {
             }
           }
 
-      excelData.push(row)
-    })
-
-        console.log(`[Export] Sheet "${typeKey}": ${excelData.length - 1} rows (${excelData.length - 1} responses + 1 header)`)
-        
-        // 엑셀 시트에 포함된 응답 날짜 범위 확인
-        if (sortedGroupResponses.length > 0) {
-          const sheetLatestDate = sortedGroupResponses[0].submittedAt
-          const sheetOldestDate = sortedGroupResponses[sortedGroupResponses.length - 1].submittedAt
-          console.log(`[Export] Sheet "${typeKey}" date range:`, {
-            latest: sheetLatestDate,
-            oldest: sheetOldestDate,
-            totalResponses: sortedGroupResponses.length,
-          })
-        }
-
-    const ws = XLSX.utils.aoa_to_sheet(excelData)
-        const colWidths = headers.map(() => ({ wch: 30 }))
-        colWidths[0] = { wch: 20 } // 제출일시 컬럼 너비 (YYYY-MM-DD HH:mm:ss 형식)
-        colWidths[1] = { wch: 15 } // 환자 성함
-        colWidths[2] = { wch: 15 } // 환자 유형
-    ws['!cols'] = colWidths
-        XLSX.utils.book_append_sheet(wb, ws, sanitizeSheetName(typeKey))
+        excelData.push(row)
       })
+
+      console.log(
+        `[Export] Sheet "전체": ${excelData.length - 1} rows (${excelData.length - 1} responses + 1 header)`,
+      )
+
+      if (sortedAllResponses.length > 0) {
+        const sheetLatestDate = sortedAllResponses[0].submittedAt
+        const sheetOldestDate = sortedAllResponses[sortedAllResponses.length - 1].submittedAt
+        console.log(`[Export] Sheet "전체" date range:`, {
+          latest: sheetLatestDate,
+          oldest: sheetOldestDate,
+          totalResponses: sortedAllResponses.length,
+        })
+      }
+
+      const ws = XLSX.utils.aoa_to_sheet(excelData)
+      const colWidths = headers.map(() => ({ wch: 30 }))
+      colWidths[0] = { wch: 20 }
+      colWidths[1] = { wch: 15 }
+      colWidths[2] = { wch: 15 }
+      ws['!cols'] = colWidths
+      XLSX.utils.book_append_sheet(wb, ws, sanitizeSheetName('전체'))
     }
 
     const excelBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
