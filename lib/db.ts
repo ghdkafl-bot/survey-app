@@ -149,6 +149,32 @@ export function buildQAliasToDbQuestionIdMap(survey: Survey | undefined): Map<st
   return map
 }
 
+async function buildQAliasToDbQuestionIdMapBySurveyId(surveyId: string): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  const supabase = getSupabaseServiceClient()
+  const { data, error } = await supabase
+    .from('question_groups')
+    .select('id, order, questions(id, order)')
+    .eq('survey_id', surveyId)
+    .order('order', { ascending: true })
+
+  if (error || !data) return map
+
+  const orderedQuestionIds = (data as any[])
+    .flatMap((group: any) =>
+      (group.questions ?? [])
+        .sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0))
+        .map((q: any) => q.id),
+    )
+    .filter((id: any) => typeof id === 'string' && id.length > 0)
+
+  orderedQuestionIds.forEach((id: string, i: number) => {
+    map.set(`q${i + 1}`, id)
+  })
+
+  return map
+}
+
 const normalizeQuestion = (question: any, groupId: string, fallbackIdPrefix: string, index: number): Question => {
   const questionId = question?.id || `${fallbackIdPrefix}-q-${index}`
   const type: QuestionType = question?.type === 'text' ? 'text' : 'scale'
@@ -599,9 +625,23 @@ export const db = {
     if (response.answers.length > 0) {
       // 질문 정보를 함께 저장하기 위해 현재 설문 정보 조회
       const survey = await db.getSurvey(response.surveyId)
+      const hasQAliases = response.answers.some((a) => /^q\d+$/i.test(a.questionId))
+      let qAliasMap = buildQAliasToDbQuestionIdMap(survey)
+
+      // 설문 구조를 못 읽었거나(qAliasMap 비어있음), q별칭 일부가 매핑되지 않으면 DB에서 직접 조회해 보강
+      if (
+        hasQAliases &&
+        (qAliasMap.size === 0 || response.answers.some((a) => /^q\d+$/i.test(a.questionId) && !qAliasMap.has(a.questionId)))
+      ) {
+        const fallbackMap = await buildQAliasToDbQuestionIdMapBySurveyId(response.surveyId)
+        if (fallbackMap.size > 0) {
+          qAliasMap = fallbackMap
+        }
+      }
 
       const answerPayload = response.answers.map((answer) => {
-        const resolvedQuestionId = resolveClientQuestionIdForDb(survey, answer.questionId)
+        const resolvedQuestionId =
+          qAliasMap.get(answer.questionId) ?? resolveClientQuestionIdForDb(survey, answer.questionId)
 
         return {
           response_id: insertedResponse.id,
@@ -616,7 +656,18 @@ export const db = {
         .from('answers')
         .insert(answerPayload)
 
-      if (answerError) throw answerError
+      if (answerError) {
+        console.error('[DB] createResponse - failed to insert answers', {
+          responseId: insertedResponse.id,
+          surveyId: response.surveyId,
+          hasQAliases,
+          qAliasMapSize: qAliasMap.size,
+          firstPayload: answerPayload[0],
+          message: answerError.message,
+          code: (answerError as any)?.code,
+        })
+        throw answerError
+      }
       
       // 답변과 함께 질문 정보를 responses 테이블에 저장
       // 설문 제출 시점의 질문 정보를 JSONB로 저장
