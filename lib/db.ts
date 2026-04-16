@@ -396,6 +396,48 @@ const mapResponseRecord = (record: any): Response => {
       } as Answer
     })
     .filter((a): a is Answer => a !== null)
+
+  // answers 테이블이 비어도 patient_info_answers의 백업에서 복구
+  if (mappedAnswers.length === 0) {
+    const backupSource =
+      typeof record.patient_info_answers === 'string'
+        ? (() => {
+            try {
+              return JSON.parse(record.patient_info_answers)
+            } catch {
+              return undefined
+            }
+          })()
+        : record.patient_info_answers
+
+    const backupAnswers = backupSource?.__answers_backup
+    if (Array.isArray(backupAnswers) && backupAnswers.length > 0) {
+      backupAnswers.forEach((ans: any) => {
+        if (!ans || typeof ans !== 'object') return
+        const questionId = ans.questionId ?? ans.question_id
+        if (typeof questionId !== 'string' || questionId.length === 0) return
+        const rawValue = ans.value
+        const value =
+          typeof rawValue === 'number'
+            ? rawValue
+            : rawValue === null
+              ? null
+              : typeof rawValue === 'string' && rawValue.trim() !== '' && !Number.isNaN(Number(rawValue))
+                ? Number(rawValue)
+                : undefined
+        const textValue =
+          typeof (ans.textValue ?? ans.text_value) === 'string'
+            ? (ans.textValue ?? ans.text_value)
+            : undefined
+        mappedAnswers.push({
+          questionId,
+          subQuestionId: ans.subQuestionId ?? ans.sub_question_id ?? undefined,
+          value,
+          textValue,
+        })
+      })
+    }
+  }
   
   // 디버깅: 답변이 없는 경우 로그
   if (mappedAnswers.length === 0 && answersArray.length > 0) {
@@ -666,7 +708,29 @@ export const db = {
           message: answerError.message,
           code: (answerError as any)?.code,
         })
-        throw answerError
+        // answers 삽입 실패 시에도 응답 유실 방지를 위해 responses.patient_info_answers에 백업 저장
+        try {
+          const existingPatientInfoAnswers =
+            typeof insertedResponse.patient_info_answers === 'string'
+              ? JSON.parse(insertedResponse.patient_info_answers)
+              : insertedResponse.patient_info_answers ?? {}
+          await supabase
+            .from('responses')
+            .update({
+              patient_info_answers: {
+                ...existingPatientInfoAnswers,
+                __answers_backup: (response.answers ?? []).map((a) => ({
+                  questionId: a.questionId,
+                  subQuestionId: a.subQuestionId ?? null,
+                  value: typeof a.value === 'number' ? a.value : a.value === null ? null : undefined,
+                  textValue: typeof a.textValue === 'string' ? a.textValue : undefined,
+                })),
+              },
+            })
+            .eq('id', insertedResponse.id)
+        } catch (backupError) {
+          console.error('[DB] createResponse - failed to backup answers', backupError)
+        }
       }
       
       // 답변과 함께 질문 정보를 responses 테이블에 저장
