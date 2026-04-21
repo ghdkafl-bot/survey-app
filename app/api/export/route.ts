@@ -1236,11 +1236,44 @@ export async function GET(request: NextRequest) {
             ...patientInfoAnswers,
           ]
 
+          const backupAnswersRaw = (response.patientInfoAnswers as any)?.__answers_backup
+          const backupAnswers: Answer[] = Array.isArray(backupAnswersRaw)
+            ? backupAnswersRaw
+                .map((a: any) => {
+                  if (!a || typeof a !== 'object') return null
+                  const qid = a.questionId ?? a.question_id
+                  if (typeof qid !== 'string' || qid.length === 0) return null
+                  const value =
+                    typeof a.value === 'number'
+                      ? a.value
+                      : a.value === null
+                        ? null
+                        : typeof a.value === 'string' && a.value.trim() !== '' && !Number.isNaN(Number(a.value))
+                          ? Number(a.value)
+                          : undefined
+                  const textValue =
+                    typeof (a.textValue ?? a.text_value) === 'string'
+                      ? (a.textValue ?? a.text_value)
+                      : undefined
+                  return {
+                    questionId: qid,
+                    subQuestionId: a.subQuestionId ?? a.sub_question_id ?? undefined,
+                    value,
+                    textValue,
+                  } as Answer
+                })
+                .filter((a: Answer | null): a is Answer => a !== null)
+            : []
+
+          // answers 테이블이 비어도 patient_info_answers.__answers_backup까지 포함해 엑셀 매칭
+          const effectiveAnswers: Answer[] =
+            response.answers && response.answers.length > 0 ? response.answers : backupAnswers
+
           if (responseIndex === 0) {
             console.log(`[Export] Processing first response in sheet "전체":`, {
               responseId: response.id,
-              answersCount: response.answers?.length || 0,
-              answers: response.answers?.map((a: Answer) => ({
+              answersCount: effectiveAnswers.length,
+              answers: effectiveAnswers.map((a: Answer) => ({
                 questionId: a.questionId,
                 subQuestionId: a.subQuestionId,
                 value: a.value,
@@ -1250,14 +1283,14 @@ export async function GET(request: NextRequest) {
               descriptorKeys: sortedDescriptors.slice(0, 5).map((d: Descriptor) => 
                 d.subQuestionId ? `${d.questionId}:${d.subQuestionId}` : d.questionId
               ),
-              answerKeys: response.answers?.map((a: Answer) => 
+              answerKeys: effectiveAnswers.map((a: Answer) => 
                 a.subQuestionId ? `${a.questionId}:${a.subQuestionId}` : a.questionId
-              ) || [],
+              ),
             })
           }
           
           // 답변이 없는 경우 로그 (경고가 아닌 정보로)
-          if (!response.answers || response.answers.length === 0) {
+          if (effectiveAnswers.length === 0) {
             console.log(`[Export] Response ${response.id} has no answers - will show empty cells for all questions`)
           }
 
@@ -1265,7 +1298,7 @@ export async function GET(request: NextRequest) {
           sortedDescriptors.forEach((desc: Descriptor, descIndex: number) => {
             const norm = (id: string | undefined) => (id == null ? '' : String(id))
             const dbIdForDesc = staticQAliasToDbId?.get(desc.questionId)
-            const answer = response.answers?.find((a: Answer) => {
+            const answer = effectiveAnswers.find((a: Answer) => {
               const idMatches =
                 norm(a.questionId) === norm(desc.questionId) ||
                 (dbIdForDesc != null && norm(a.questionId) === norm(dbIdForDesc))
@@ -1324,7 +1357,7 @@ export async function GET(request: NextRequest) {
             })
             
             // 매칭되지 않은 답변 확인
-            const unmatchedAnswers = response.answers?.filter((a: Answer) => {
+            const unmatchedAnswers = effectiveAnswers.filter((a: Answer) => {
               const key = a.subQuestionId ? `${a.questionId}:${a.subQuestionId}` : a.questionId
               return !sortedDescriptors.some((d: Descriptor) => {
                 const dbId = staticQAliasToDbId?.get(d.questionId)
@@ -1342,7 +1375,7 @@ export async function GET(request: NextRequest) {
               console.log(`[Export] Matched answers details:`, 
                 sortedDescriptors.slice(0, 10).map((desc: Descriptor, idx: number) => {
                   const dbId = staticQAliasToDbId?.get(desc.questionId)
-                  const answer = response.answers?.find((a: Answer) => {
+                  const answer = effectiveAnswers.find((a: Answer) => {
                     const idMatches =
                       a.questionId === desc.questionId ||
                       (dbId != null && a.questionId === dbId)
