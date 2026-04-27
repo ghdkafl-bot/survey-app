@@ -1121,6 +1121,12 @@ export async function GET(request: NextRequest) {
 
     // 환자 정보 추가 질문 헤더 생성
     const patientInfoHeaders: string[] = []
+    // 홈 고정 설문에서 사용하는 고정 환자정보 키들 (추가질문 설정과 별개로 항상 export)
+    const FIXED_PATIENT_INFO_FIELDS: { id: string; header: string }[] = [
+      { id: 'howKnown', header: '유입 경로 - 우리 병원을 어떻게 알고 이용하게 되었나요?' },
+    ]
+    FIXED_PATIENT_INFO_FIELDS.forEach((f) => patientInfoHeaders.push(f.header))
+
     if (
       survey.patientInfoConfig?.additionalQuestions &&
       survey.patientInfoConfig.additionalQuestions.length > 0
@@ -1208,6 +1214,13 @@ export async function GET(request: NextRequest) {
           
           // 환자 정보 추가 질문 답변 추가
           const patientInfoAnswers: string[] = []
+          // 고정 환자정보 키들 먼저 채우기
+          FIXED_PATIENT_INFO_FIELDS.forEach((f) => {
+            const v = (response.patientInfoAnswers as any)?.[f.id]
+            if (Array.isArray(v) && v.length > 0) patientInfoAnswers.push(v.join(', '))
+            else if (typeof v === 'string' && v.trim()) patientInfoAnswers.push(v.trim())
+            else patientInfoAnswers.push('')
+          })
           if (
             survey.patientInfoConfig?.additionalQuestions &&
             survey.patientInfoConfig.additionalQuestions.length > 0
