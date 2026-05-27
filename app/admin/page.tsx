@@ -112,10 +112,18 @@ export default function AdminPage() {
         return
       }
 
+      const legacyCount = Number(res.headers.get('X-Legacy-Count') ?? '')
+      if (!Number.isNaN(legacyCount) && legacyCount === 0) {
+        alert(
+          '백업할 예전 응답이 없습니다.\n' +
+            '현재 설문 ID와 다른 설문의 응답, 또는 구형(5문항 이외) 질문 구조 응답만 포함됩니다.',
+        )
+      }
+
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = 'legacy-responses-backup.xlsx'
+      a.download = '구)내원환자조사통계.xlsx'
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)

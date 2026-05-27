@@ -81,6 +81,7 @@ export interface Response {
   patientName?: string
   patientType?: string
   patientInfoAnswers?: Record<string, string[]>
+  questionSnapshot?: unknown
 }
 
 export interface Answer {
@@ -457,6 +458,7 @@ const mapResponseRecord = (record: any): Response => {
       typeof record.patient_info_answers === 'object' && record.patient_info_answers !== null
         ? record.patient_info_answers
         : undefined,
+    questionSnapshot: record.question_snapshot ?? undefined,
     answers: mappedAnswers,
   }
 }
